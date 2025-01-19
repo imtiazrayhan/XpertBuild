@@ -1,0 +1,2 @@
+(window.webpackJsonp=window.webpackJsonp||[]).push([[0],{13:function(e,n,t){"use strict";t.r(n);var o=t(0),r=t.n(o),a=t(3);var c=function(){return r.a.createElement("h1",null,"Hello from XpertBuild React!")};t.n(a).a.createRoot(document.getElementById("root")).render(r.a.createElement(c,null))},4:function(e,n,t){e.exports=t(13)}},[[4,1,2]]]);
+//# sourceMappingURL=main.e452cff8.chunk.js.map
