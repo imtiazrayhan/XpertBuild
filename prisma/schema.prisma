@@ -1,14 +1,177 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+datasource db {
+  provider = "postgresql" // or "mysql", "sqlite", etc.
+  url      = env("DATABASE_URL")
+}
 
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+// ---------------------------
+//         PROJECT
+// ---------------------------
+model Project {
+  id            String    @id @default(cuid())
+  name          String
+  client        String    // e.g., "NYCHA", "SCA", or other
+  contractValue Decimal?  // initially entered; replaced by sum of WorkItems x Qty
+  contractType  String    // e.g., "Direct", "Subcontract"
+  status        String    // "Planning", "In Progress", "Completed", "On Hold"
+  startDate     DateTime?
+  address       String?
+  
+  // if subcontract, store name of general contractor
+  generalContractor String?
+
+  buildings     Building[]
+  expenses      Expense[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+// ---------------------------
+//        BUILDING
+// ---------------------------
+model Building {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String   // "Building A", "Building #1", etc.
+  project   Project  @relation(fields: [projectId], references: [id])
+  
+  elevations Elevation[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------
+//        ELEVATION
+// ---------------------------
+model Elevation {
+  id         String    @id @default(cuid())
+  buildingId String
+  name       String?   // e.g., "North Elevation", "East Wing", etc.
+  isComplete Boolean   @default(false)
+  completedAt DateTime? // track completion date if needed
+
+  building   Building  @relation(fields: [buildingId], references: [id])
+  
+  // Relationship to WorkItems (via ElevationWorkItem)
+  elevationWorkItems ElevationWorkItem[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------
+//  WORK ITEM - details & bridging table
+// ---------------------------------------------
+model WorkItem {
+  id          String   @id @default(cuid())
+  code        String
+  description String?
+  unit        String?  // e.g., "SF", "LF", etc.
+  unitPrice   Decimal?
+  
+  // If you want to store a default quantity or other metadata
+  // you can do so here. Usually quantity is stored in the bridging table.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationship to Elevations (via ElevationWorkItem)
+  elevationWorkItems ElevationWorkItem[]
+}
+
+// A bridging table to store the quantity of each WorkItem for each Elevation
+model ElevationWorkItem {
+  id          String   @id @default(cuid())
+  elevationId String
+  workItemId  String
+  quantity    Decimal  @default(0)
+  
+  elevation   Elevation @relation(fields: [elevationId], references: [id])
+  workItem    WorkItem  @relation(fields: [workItemId], references: [id])
+  
+  // Track partial completion or progress if needed
+  progressStatus String? // e.g., "In Progress", "50% Complete", etc.
+  completedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Composite key for (elevationId, workItemId) if you need uniqueness
+  // @@unique([elevationId, workItemId])
+}
+
+// ---------------------------
+//        EMPLOYEE
+// ---------------------------
+model Employee {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  ssn       String  @unique // for union employees or local if needed
+  dob       DateTime?
+  
+  isUnion   Boolean @default(false)
+  unionClassificationId String?  // If isUnion = true, link classification
+
+  // Link to a union classification if the employee is union
+  unionClassification UnionClassification? @relation(fields: [unionClassificationId], references: [id])
+
+  // For local labor, you can store field or office details
+  localClass  String?   // e.g., "Field", "Office"
+  hourlyRate  Decimal?  // For local labor (or store in another model if rate changes)
+  
+  address     String?
+  city        String?
+  state       String?
+  zip         String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// -----------------------------------------
+//   UNION CLASSIFICATION & RATE TRACKING
+// -----------------------------------------
+model UnionClassification {
+  id                String   @id @default(cuid())
+  name              String   // e.g. "Carpenter", "Electrician"
+  
+  // Storing just current rates or you can break it out into a separate model for history
+  regularRate       Decimal?
+  overtimeRate      Decimal?
+  benefitsRate      Decimal?
+
+  // If you want to handle historical rate changes, consider a separate table:
+  // classificationRateHistories ClassificationRateHistory[]
+
+  employees         Employee[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -------------------------------------------
+//           EXPENSE
+// -------------------------------------------
+model Expense {
+  id         String   @id @default(cuid())
+  date       DateTime @default(now())
+  amount     Decimal
+  category   String?  // e.g., "Tools", "Rentals", "Operational"
+  tags       String?  // e.g., "emergency", "bulk purchase" (could also be a JSON or separate table)
+  vendor     String?
+  
+  projectId  String?  // null if general, or link to a specific project
+  project    Project? @relation(fields: [projectId], references: [id])
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
