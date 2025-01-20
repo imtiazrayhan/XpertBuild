@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id            String    @id @default(uuid())
+  name          String
+  contractValue Float
+  client        String
+  contractType  ContractType
+  startDate     DateTime
+  status        ProjectStatus
+  address       String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  buildings     Building[]
+  workItems     ProjectWorkItem[]
+  expenses      Expense[]
+}
+
+model Building {
+  id        String      @id @default(uuid())
+  name      String
+  project   Project     @relation(fields: [projectId], references: [id])
+  projectId String
+  elevations Elevation[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model Elevation {
+  id          String        @id @default(uuid())
+  name        String
+  building    Building      @relation(fields: [buildingId], references: [id])
+  buildingId  String
+  quantities  WorkItemQuantity[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model WorkItem {
+  id          String        @id @default(uuid())
+  code        String        @unique
+  description String
+  unit        String
+  unitPrice   Float
+  isTemplate  Boolean       @default(false)
+  projects    ProjectWorkItem[]
+  quantities  WorkItemQuantity[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model ProjectWorkItem {
+  id          String    @id @default(uuid())
+  project     Project   @relation(fields: [projectId], references: [id])
+  projectId   String
+  workItem    WorkItem  @relation(fields: [workItemId], references: [id])
+  workItemId  String
+  unitPrice   Float     // Project-specific override of work item's base price
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model WorkItemQuantity {
+  id          String    @id @default(uuid())
+  elevation   Elevation @relation(fields: [elevationId], references: [id])
+  elevationId String
+  workItem    WorkItem  @relation(fields: [workItemId], references: [id])
+  workItemId  String
+  quantity    Float
+  completed   Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Employee {
+  id              String            @id @default(uuid())
+  name            String
+  classification  EmployeeClass
+  status          EmployeeStatus
+  hourlyRate      Float?           // Null for union employees
+  ssn             String?          // Only for union employees
+  dob             DateTime?        // Only for union employees
+  address         String?          // Only for union employees
+  unionClass      UnionClass?      @relation(fields: [unionClassId], references: [id])
+  unionClassId    String?
+  timeEntries     TimeEntry[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model UnionClass {
+  id            String           @id @default(uuid())
+  name          String
+  employees     Employee[]
+  rates         UnionClassRate[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model UnionClassRate {
+  id            String     @id @default(uuid())
+  unionClass    UnionClass @relation(fields: [unionClassId], references: [id])
+  unionClassId  String
+  regularRate   Float
+  overtimeRate  Float
+  benefitsRate  Float
+  effectiveDate DateTime
+  endDate       DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([unionClassId, effectiveDate])
+}
+
+model TimeEntry {
+  id          String    @id @default(uuid())
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  employeeId  String
+  date        DateTime
+  hours       Float
+  type        TimeType
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Expense {
+  id          String        @id @default(uuid())
+  amount      Float
+  date        DateTime
+  description String
+  category    String
+  type        ExpenseType
+  vendor      String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  projectId   String?
+  recurring   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+enum ContractType {
+  DIRECT
+  SUBCONTRACT
+}
+
+enum EmployeeClass {
+  OFFICE
+  FIELD
+  UNION
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TimeType {
+  REGULAR
+  OVERTIME
+}
+
+enum ExpenseType {
+  GENERAL
+  PROJECT
+}
