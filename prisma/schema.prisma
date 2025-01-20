@@ -13,6 +13,7 @@ model Project {
   contractValue Float
   client        String
   contractType  ContractType
+  generalContractor String?
   startDate     DateTime
   status        ProjectStatus
   address       String
