@@ -1,1 +1,0 @@
-import{l as s}from"./index-CyWGbrK6.js";const n=s("expense",{state:()=>({expenses:[],loading:!1,error:null}),actions:{async fetchExpenses(){this.loading=!0;try{const e=await fetch("/api/expenses");this.expenses=await e.json()}catch{this.error="Failed to fetch expenses"}finally{this.loading=!1}}}});export{n as u};
