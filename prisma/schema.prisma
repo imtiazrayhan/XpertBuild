@@ -81,23 +81,32 @@ model WorkItemQuantity {
 }
 
 model Employee {
-  id              String            @id @default(uuid())
-  name            String
-  classification  EmployeeClass
-  status          EmployeeStatus
-  hourlyRate      Float?           // Null for union employees
-  ssn             String?          // Only for union employees
-  dob             DateTime?        // Only for union employees
-  address         String?          // Only for union employees
+  id              Int              @id @default(autoincrement())
+  firstName       String
+  lastName        String
+  employeeType    EmployeeType     // LOCAL or UNION
+  // Local employee fields
+  hourlyRate      Float?           // Only for LOCAL employees
+  isFieldWorker   Boolean?         // Only for LOCAL employees
+  // Union employee fields
+  ssn             String?          @unique // Required for UNION employees
+  dob             DateTime?        // Required for UNION employees
+  address         String?          // Required for UNION employees
+  city            String?          // Required for UNION employees
+  state           String?          // Required for UNION employees
+  zip             String?          // Required for UNION employees
   unionClass      UnionClass?      @relation(fields: [unionClassId], references: [id])
-  unionClassId    String?
+  unionClassId    Int?
   timeEntries     TimeEntry[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+
+  @@index([employeeType])
+  @@index([ssn])
 }
 
 model UnionClass {
-  id            String           @id @default(uuid())
+  id            Int              @id @default(autoincrement())
   name          String
   employees     Employee[]
   rates         UnionClassRate[]
@@ -106,24 +115,24 @@ model UnionClass {
 }
 
 model UnionClassRate {
-  id            String     @id @default(uuid())
-  unionClass    UnionClass @relation(fields: [unionClassId], references: [id])
-  unionClassId  String
+  id            Int          @id @default(autoincrement())
+  unionClass    UnionClass   @relation(fields: [unionClassId], references: [id])
+  unionClassId  Int
   regularRate   Float
   overtimeRate  Float
   benefitsRate  Float
   effectiveDate DateTime
   endDate       DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([unionClassId, effectiveDate])
 }
 
 model TimeEntry {
-  id          String    @id @default(uuid())
+  id          Int       @id @default(autoincrement())
   employee    Employee  @relation(fields: [employeeId], references: [id])
-  employeeId  String
+  employeeId  Int
   date        DateTime
   hours       Float
   type        TimeType
@@ -158,15 +167,9 @@ enum ContractType {
   SUBCONTRACT
 }
 
-enum EmployeeClass {
-  OFFICE
-  FIELD
+enum EmployeeType {
+  LOCAL
   UNION
-}
-
-enum EmployeeStatus {
-  ACTIVE
-  INACTIVE
 }
 
 enum TimeType {

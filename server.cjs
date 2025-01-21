@@ -7,6 +7,10 @@ const port = 3000
 
 app.use(express.json())
 
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`)
+})
+
 // Get all projects
 app.get('/api/projects', async (req, res) => {
   try {
@@ -54,10 +58,6 @@ app.get('/api/projects/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Error fetching project' })
   }
-})
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`)
 })
 
 app.get('/api/expenses', async (req, res) => {
