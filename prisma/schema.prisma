@@ -136,7 +136,7 @@ model Expense {
   amount      Float
   date        DateTime
   description String
-  category    String
+  category    ExpenseCategory
   type        ExpenseType
   vendor      String?
   project     Project?      @relation(fields: [projectId], references: [id])
@@ -177,4 +177,11 @@ enum TimeType {
 enum ExpenseType {
   GENERAL
   PROJECT
+}
+
+enum ExpenseCategory {
+  MATERIAL
+  TOOLS
+  RENTALS
+  OPERATIONAL
 }

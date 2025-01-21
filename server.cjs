@@ -59,3 +59,75 @@ app.get('/api/projects/:id', async (req, res) => {
 app.listen(port, () => {
   console.log(`Server running on port ${port}`)
 })
+
+app.get('/api/expenses', async (req, res) => {
+  try {
+    const expenses = await prisma.expense.findMany({
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(expenses)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch expenses' })
+  }
+})
+
+app.post('/api/expenses', async (req, res) => {
+  try {
+    const expense = await prisma.expense.create({
+      data: {
+        amount: parseFloat(req.body.amount),
+        date: new Date(req.body.date),
+        description: req.body.description,
+        category: req.body.category,
+        type: req.body.type,
+        vendor: req.body.vendor || null,
+        projectId: req.body.projectId || null,
+        recurring: req.body.recurring,
+      },
+    })
+    res.json(expense)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create expense' })
+  }
+})
+
+app.put('/api/expenses/:id', async (req, res) => {
+  try {
+    const expense = await prisma.expense.update({
+      where: { id: req.params.id },
+      data: {
+        amount: parseFloat(req.body.amount),
+        date: new Date(req.body.date),
+        description: req.body.description,
+        category: req.body.category,
+        type: req.body.type,
+        vendor: req.body.vendor || null,
+        projectId: req.body.projectId || null,
+        recurring: req.body.recurring,
+      },
+    })
+    res.json(expense)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update expense' })
+  }
+})
+
+app.delete('/api/expenses/:id', async (req, res) => {
+  try {
+    await prisma.expense.delete({
+      where: { id: req.params.id },
+    })
+    res.json({ message: 'Expense deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete expense' })
+  }
+})
