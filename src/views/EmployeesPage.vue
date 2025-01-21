@@ -28,7 +28,7 @@ interface Employee {
 const employees = ref<Employee[]>([])
 const unionClasses = ref<UnionClass[]>([])
 const showEmployeeModal = ref(false)
-const viewType = ref<'LOCAL' | 'UNION'>('LOCAL')
+const viewType = ref<'LOCAL' | 'UNION'>('UNION')
 const isEditing = ref(false)
 const editingEmployeeId = ref<number | null>(null)
 
