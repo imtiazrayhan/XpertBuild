@@ -275,3 +275,101 @@ app.delete('/api/employees/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete employee' })
   }
 })
+// Get all time entries
+app.get('/api/time-entries', async (req, res) => {
+  try {
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        employee: {
+          employeeType: 'LOCAL',
+        },
+      },
+      include: {
+        employee: true,
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(timeEntries)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch time entries' })
+  }
+})
+
+// Create time entry
+app.post('/api/time-entries', async (req, res) => {
+  try {
+    const timeEntry = await prisma.timeEntry.create({
+      data: {
+        employeeId: req.body.employeeId,
+        date: new Date(req.body.date),
+        regularHours: req.body.regularHours,
+        overtimeHours: 0,
+        type: 'REGULAR',
+        weekNumber: getWeekNumber(new Date(req.body.date)),
+        yearNumber: new Date(req.body.date).getFullYear(),
+        paymentStatus: 'PENDING',
+      },
+    })
+    res.json(timeEntry)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create time entry' })
+  }
+})
+
+// Update time entry payment status
+app.patch('/api/time-entries/:id', async (req, res) => {
+  try {
+    const timeEntry = await prisma.timeEntry.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        paymentStatus: req.body.paymentStatus,
+      },
+    })
+    res.json(timeEntry)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update time entry' })
+  }
+})
+
+// Get all unpaid entries for an employee
+app.get('/api/time-entries/unpaid/:employeeId', async (req, res) => {
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        employeeId: parseInt(req.params.employeeId),
+        paymentStatus: 'PENDING',
+      },
+    })
+    res.json(entries)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch unpaid entries' })
+  }
+})
+
+// Update time entry
+app.put('/api/time-entries/:id', async (req, res) => {
+  try {
+    const timeEntry = await prisma.timeEntry.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        date: new Date(req.body.date),
+        regularHours: req.body.regularHours,
+        overtimeHours: req.body.overtimeHours,
+      },
+    })
+    res.json(timeEntry)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update time entry' })
+  }
+})
+
+// Helper function to get week number
+function getWeekNumber(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7))
+  const yearStart = new Date(d.getFullYear(), 0, 1)
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
+}

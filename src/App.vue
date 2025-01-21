@@ -25,7 +25,14 @@ const navItems = [
       { name: 'Union Classes', icon: UserGroupIcon, route: '/union-classes' },
     ],
   },
-  { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
+  {
+    name: 'Timesheet',
+    icon: ClockIcon,
+    children: [
+      { name: 'Local Timesheet', component: 'LocalTimesheetPage', route: '/local-timesheet' },
+      { name: 'Union Timesheet', component: 'UnionTimesheetPage', route: '/union-timesheet' },
+    ],
+  },
   { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
 ]
 
