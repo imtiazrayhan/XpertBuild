@@ -36,10 +36,17 @@ const defaultOvertimeHours = ref(0)
 const employeeFilter = ref<'ALL' | 'LOCAL' | 'UNION'>('ALL')
 
 const selectedEmployees = computed(() =>
-  employees.value.filter(
-    (emp) =>
-      emp.selected && (employeeFilter.value === 'ALL' || emp.employeeType === employeeFilter.value),
-  ),
+  employees.value
+    .filter(
+      (emp) =>
+        emp.selected &&
+        (employeeFilter.value === 'ALL' || emp.employeeType === employeeFilter.value),
+    )
+    .map((emp) => ({
+      ...emp,
+      regularHours: emp.regularHours || defaultRegularHours.value,
+      overtimeHours: emp.overtimeHours || defaultOvertimeHours.value,
+    })),
 )
 
 const fetchEmployees = async () => {
@@ -83,8 +90,8 @@ const submitTimeEntries = async () => {
     employeeId: employee.id,
     projectId: selectedProject.value,
     date: selectedDate.value,
-    regularHours: defaultRegularHours.value,
-    overtimeHours: defaultOvertimeHours.value,
+    regularHours: employee.regularHours,
+    overtimeHours: employee.overtimeHours,
   }))
 
   try {
@@ -218,6 +225,44 @@ fetchProjects()
                 {{ employee.employeeType }}
               </span>
             </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Individual Hours Adjustment -->
+      <div v-if="selectedEmployees.length > 0" class="border rounded-lg p-4">
+        <h3 class="text-sm font-medium text-gray-700 mb-4">Adjust Individual Hours</h3>
+        <div class="space-y-4">
+          <div
+            v-for="employee in selectedEmployees"
+            :key="employee.id"
+            class="grid grid-cols-3 gap-4 items-center"
+          >
+            <div class="text-sm">{{ employee.firstName }} {{ employee.lastName }}</div>
+            <div>
+              <label class="block text-xs text-gray-500">Regular Hours</label>
+              <input
+                v-model="employee.regularHours"
+                type="number"
+                min="0"
+                max="24"
+                step="0.5"
+                :placeholder="defaultRegularHours.toString()"
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500">Overtime Hours</label>
+              <input
+                v-model="employee.overtimeHours"
+                type="number"
+                min="0"
+                max="24"
+                step="0.5"
+                :placeholder="defaultOvertimeHours.toString()"
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
           </div>
         </div>
       </div>
