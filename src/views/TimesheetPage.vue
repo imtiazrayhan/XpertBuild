@@ -3,6 +3,22 @@
 import { ref, computed } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 
+interface ValidationResult {
+  isValid: boolean
+  errors: string[]
+}
+
+interface TimeEntryValidation {
+  validateHours: (regularHours: number, overtimeHours: number) => ValidationResult
+  validateProject: (projectId: string, date: string) => Promise<ValidationResult>
+  validateDuplicates: (entries: TimeEntry[]) => Promise<ValidationResult>
+  validateUnionRules: (
+    employee: Employee,
+    regularHours: number,
+    overtimeHours: number,
+  ) => ValidationResult
+}
+
 interface TimeEntry {
   employeeId: number
   projectId: string
@@ -52,6 +68,132 @@ const selectedEmployees = computed(() =>
     })),
 )
 
+const validationErrors = ref<string[]>([])
+
+const timeEntryValidation: TimeEntryValidation = {
+  validateHours(regularHours: number, overtimeHours: number) {
+    const errors: string[] = []
+    const totalHours = regularHours + overtimeHours
+
+    if (totalHours > 16) {
+      errors.push('Total hours cannot exceed 16 hours per day')
+    }
+
+    if (totalHours <= 0) {
+      errors.push('Total hours must be greater than 0')
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    }
+  },
+
+  async validateProject(projectId: string, date: string) {
+    const errors: string[] = []
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`)
+      const project = await response.json()
+
+      const entryDate = new Date(date)
+      const projectStart = new Date(project.startDate)
+
+      if (entryDate < projectStart) {
+        errors.push('Time entry date cannot be before project start date')
+      }
+
+      if (project.status === 'COMPLETED' || project.status === 'ON_HOLD') {
+        errors.push('Cannot add time entries to completed or on-hold projects')
+      }
+    } catch (error) {
+      errors.push('Error validating project')
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    }
+  },
+
+  async validateDuplicates(entries: TimeEntry[]) {
+    const errors: string[] = []
+
+    try {
+      // Get existing entries for the date
+      const date = entries[0].date
+      const { weekNumber, yearNumber } = getWeekNumber(date)
+
+      const response = await fetch(
+        `/api/time-entries?weekNumber=${weekNumber}&yearNumber=${yearNumber}`,
+      )
+      const existingEntries = await response.json()
+
+      // Check for duplicates
+      for (const entry of entries) {
+        const duplicate = existingEntries.find(
+          (e: TimeEntry) =>
+            e.employeeId === entry.employeeId &&
+            new Date(e.date).toISOString().split('T')[0] === entry.date,
+        )
+
+        if (duplicate) {
+          errors.push(`Duplicate entry found for employee ID ${entry.employeeId} on ${entry.date}`)
+        }
+      }
+    } catch (error) {
+      errors.push('Error checking for duplicate entries')
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    }
+  },
+
+  validateUnionRules(employee: Employee, regularHours: number, overtimeHours: number) {
+    const errors: string[] = []
+
+    if (employee.employeeType === 'UNION') {
+      // Validate minimum hours (4 hours for union workers)
+      if (regularHours === 0) {
+        errors.push('Union workers must be assigned minimum 1 regular hours')
+      }
+
+      // Validate overtime rules
+      if (overtimeHours > 0 && regularHours < 8) {
+        errors.push('8 regular hours required before overtime for union workers')
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    }
+  },
+}
+
+const validateForm = (): ValidationResult => {
+  const errors: string[] = []
+
+  if (!selectedProject.value) {
+    errors.push('Please select a project')
+  }
+
+  if (!selectedDate.value) {
+    errors.push('Please select a date')
+  }
+
+  if (selectedEmployees.value.length === 0) {
+    errors.push('Please select at least one employee')
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  }
+}
+
 const getWeekNumber = (date: string) => {
   const d = new Date(date)
   d.setHours(0, 0, 0, 0)
@@ -96,8 +238,11 @@ const showSuccessMessage = () => {
 }
 
 const submitTimeEntries = async () => {
-  if (!selectedProject.value || !selectedDate.value) {
-    alert('Please select a project and date')
+  validationErrors.value = []
+
+  const formValidation = validateForm()
+  if (!formValidation.isValid) {
+    validationErrors.value = formValidation.errors
     return
   }
 
@@ -110,6 +255,38 @@ const submitTimeEntries = async () => {
   }))
 
   try {
+    // Run all validations
+    const projectValidation = await timeEntryValidation.validateProject(
+      selectedProject.value,
+      selectedDate.value,
+    )
+    const duplicateValidation = await timeEntryValidation.validateDuplicates(entries)
+
+    const hourValidations = selectedEmployees.value.map((employee) => ({
+      employee,
+      hoursValidation: timeEntryValidation.validateHours(
+        employee.regularHours ?? defaultRegularHours.value,
+        employee.overtimeHours ?? defaultOvertimeHours.value,
+      ),
+      unionValidation: timeEntryValidation.validateUnionRules(
+        employee,
+        employee.regularHours ?? defaultRegularHours.value,
+        employee.overtimeHours ?? defaultOvertimeHours.value,
+      ),
+    }))
+
+    // Collect all validation errors
+    validationErrors.value = [
+      ...projectValidation.errors,
+      ...duplicateValidation.errors,
+      ...hourValidations.flatMap((v) => [...v.hoursValidation.errors, ...v.unionValidation.errors]),
+    ]
+
+    if (validationErrors.value.length > 0) {
+      return
+    }
+
+    // Submit if all validations pass
     const response = await fetch('/api/time-entries/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,6 +299,7 @@ const submitTimeEntries = async () => {
     }
   } catch (error) {
     console.error('Error submitting time entries:', error)
+    validationErrors.value = ['Error submitting time entries']
   }
 }
 
@@ -303,20 +481,45 @@ fetchProjects()
         </h3>
       </div>
 
+      <!-- Add this before the submit button -->
+      <div
+        v-if="validationErrors.length > 0"
+        class="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+        role="alert"
+      >
+        <strong class="font-bold">Validation Errors:</strong>
+        <ul class="mt-2 list-disc list-inside">
+          <li v-for="error in validationErrors" :key="error" class="text-sm">
+            {{ error }}
+          </li>
+        </ul>
+      </div>
+
       <!-- Submit Button -->
       <div class="flex justify-end space-x-3">
+        <div v-if="!selectedProject" class="text-red-600 text-sm mb-2">
+          Please select a project to continue
+        </div>
         <button
           @click="resetForm"
           class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
         >
           Reset
         </button>
+        <!-- Add this above the submit button -->
+
         <button
           @click="submitTimeEntries"
-          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="!selectedProject || selectedEmployees.length === 0"
         >
-          Save Time Entries
+          {{
+            !selectedProject
+              ? 'Select a Project'
+              : selectedEmployees.length === 0
+                ? 'Select Employees'
+                : 'Save Time Entries'
+          }}
         </button>
       </div>
     </div>
