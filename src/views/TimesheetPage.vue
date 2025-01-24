@@ -1,6 +1,6 @@
 <!-- TimesheetPage.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/vue/24/outline'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 
@@ -153,16 +153,20 @@ const fetchTimeEntries = async (start: Date, end: Date) => {
   }
 }
 
-const navigatePeriod = (direction: 'prev' | 'next') => {
+const navigatePeriod = async (direction: 'prev' | 'next') => {
   const newDate = new Date(currentDate.value)
   if (calendarView.value === 'week') {
     newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
+    currentDate.value = newDate
+    const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
+    await fetchTimeEntries(calendarDates.value[0], lastDate)
   } else {
     newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
+    currentDate.value = newDate
+    const monthStart = new Date(newDate.getFullYear(), newDate.getMonth(), 1)
+    const monthEnd = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0)
+    await fetchTimeEntries(monthStart, monthEnd)
   }
-  currentDate.value = newDate
-  const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
-  fetchTimeEntries(calendarDates.value[0], lastDate)
 }
 
 const formatHours = (entries: TimeEntry[]) => {
@@ -456,6 +460,18 @@ const resetForm = () => {
   defaultOvertimeHours.value = 0
 }
 
+// Add watch for calendarView
+watch(calendarView, async () => {
+  if (calendarView.value === 'month') {
+    const monthStart = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1)
+    const monthEnd = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0)
+    await fetchTimeEntries(monthStart, monthEnd)
+  } else {
+    const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
+    await fetchTimeEntries(calendarDates.value[0], lastDate)
+  }
+})
+
 onMounted(() => {
   fetchEmployees()
   fetchProjects()
@@ -568,7 +584,7 @@ onMounted(() => {
                 groupedEntries[date.toISOString().split('T')[0]],
               )"
               :key="project.projectName"
-              class="p-2 rounded-md border border-gray-200"
+              class="p-2 rounded-md border border-gray-200 bg-gray-50"
             >
               <div class="font-medium text-gray-900">{{ project.projectName }}</div>
 
