@@ -1,8 +1,7 @@
 <!-- TimesheetPage.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/vue/24/outline'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 interface ValidationResult {
   isValid: boolean
@@ -69,7 +68,7 @@ const defaultRegularHours = ref(8)
 const defaultOvertimeHours = ref(0)
 const employeeFilter = ref<'ALL' | 'LOCAL' | 'UNION'>('ALL')
 const showSuccessNotification = ref(false)
-const viewMode = ref<'entry' | 'calendar'>('entry')
+const viewMode = ref<'entry' | 'calendar' | 'manage'>('entry')
 const calendarView = ref<'week' | 'month'>('week')
 const currentDate = ref(new Date())
 const timeEntries = ref<TimeEntry[]>([])
@@ -460,6 +459,105 @@ const resetForm = () => {
   defaultOvertimeHours.value = 0
 }
 
+interface TimeEntryWithDetails extends TimeEntry {
+  employee: Employee
+  project?: Project
+}
+
+// Add to ref declarations
+const manageViewTab = ref<'entries' | 'local' | 'union'>('entries')
+const dateRange = ref({
+  start: '',
+  end: '',
+})
+const selectedEntries = ref<Set<number>>(new Set())
+const timeEntriesWithDetails = ref<TimeEntryWithDetails[]>([])
+
+// Add to script section:
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+// Add new methods
+const fetchTimeEntriesWithDetails = async () => {
+  if (!dateRange.value.start || !dateRange.value.end) return
+
+  try {
+    const response = await fetch(
+      `/api/time-entries/range?startDate=${dateRange.value.start}&endDate=${dateRange.value.end}`,
+    )
+    timeEntriesWithDetails.value = await response.json()
+  } catch (error) {
+    console.error('Error fetching time entries:', error)
+  }
+}
+
+const deleteTimeEntries = async () => {
+  if (!confirm('Are you sure you want to delete the selected time entries?')) return
+
+  try {
+    const deletePromises = Array.from(selectedEntries.value).map((id) =>
+      fetch(`/api/time-entries/${id}`, { method: 'DELETE' }),
+    )
+
+    await Promise.all(deletePromises)
+    await fetchTimeEntriesWithDetails()
+    selectedEntries.value.clear()
+  } catch (error) {
+    console.error('Error deleting time entries:', error)
+  }
+}
+
+const updateTimeEntry = async (entry: TimeEntry) => {
+  try {
+    const response = await fetch(`/api/time-entries/${entry.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    })
+
+    if (response.ok) {
+      await fetchTimeEntriesWithDetails()
+    }
+  } catch (error) {
+    console.error('Error updating time entry:', error)
+  }
+}
+
+// Add to script section:
+
+const showEditModal = ref(false)
+const editingEntry = ref<TimeEntry | null>(null)
+
+const openEditModal = (entry: TimeEntry) => {
+  editingEntry.value = { ...entry }
+  showEditModal.value = true
+}
+
+const handleEditSave = async () => {
+  if (!editingEntry.value) return
+
+  try {
+    await updateTimeEntry(editingEntry.value)
+    showEditModal.value = false
+    editingEntry.value = null
+  } catch (error) {
+    console.error('Error updating time entry:', error)
+  }
+}
+
+// Add watch for dateRange
+watch([() => dateRange.value.start, () => dateRange.value.end], () => {
+  if (dateRange.value.start && dateRange.value.end) {
+    fetchTimeEntriesWithDetails()
+  }
+})
+
 // Add watch for calendarView
 watch(calendarView, async () => {
   if (calendarView.value === 'month') {
@@ -502,7 +600,7 @@ onMounted(() => {
       <div class="flex justify-between items-center mb-4">
         <div class="flex space-x-4">
           <button
-            v-for="mode in ['entry', 'calendar']"
+            v-for="mode in ['entry', 'calendar', 'manage']"
             :key="mode"
             @click="viewMode = mode"
             :class="[
@@ -529,7 +627,10 @@ onMounted(() => {
           </button>
         </div>
       </div>
+    </div>
 
+    <!-- Calendar Grid -->
+    <div v-if="viewMode === 'calendar'" class="bg-white rounded-lg shadow-sm mt-4">
       <!-- Calendar Navigation -->
       <div v-if="viewMode === 'calendar'" class="mb-4 flex justify-between items-center">
         <button @click="navigatePeriod('prev')" class="p-2 hover:bg-gray-100 rounded">
@@ -543,10 +644,6 @@ onMounted(() => {
           <ChevronRightIcon class="w-5 h-5" />
         </button>
       </div>
-    </div>
-
-    <!-- Calendar Grid -->
-    <div v-if="viewMode === 'calendar'" class="bg-white rounded-lg shadow-sm mt-4">
       <div class="grid" :class="calendarView === 'week' ? 'grid-cols-7' : 'grid-cols-7'">
         <!-- Header -->
         <div
@@ -611,7 +708,236 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <div v-else class="space-y-6">
+
+    <!-- Manage View -->
+    <div v-if="viewMode === 'manage'" class="space-y-6">
+      <!-- Tab Navigation -->
+      <div class="bg-white rounded-lg p-4 shadow-sm">
+        <div class="flex space-x-4">
+          <button
+            v-for="tab in ['entries', 'local', 'union']"
+            :key="tab"
+            @click="manageViewTab = tab"
+            :class="[
+              'px-4 py-2 rounded-md',
+              manageViewTab === tab
+                ? 'bg-blue-100 text-blue-700'
+                : 'text-gray-600 hover:bg-gray-100',
+            ]"
+          >
+            {{ tab.charAt(0).toUpperCase() + tab.slice(1) }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Time Entries Management -->
+      <div v-if="manageViewTab === 'entries'" class="space-y-6">
+        <!-- Filters -->
+        <div class="bg-white rounded-lg p-6 shadow-sm space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Start Date</label>
+              <input
+                v-model="dateRange.start"
+                type="date"
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">End Date</label>
+              <input
+                v-model="dateRange.end"
+                type="date"
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-between items-center">
+          <div>
+            <span class="text-gray-700"> {{ selectedEntries.size }} entries selected </span>
+          </div>
+          <button
+            v-if="selectedEntries.size > 0"
+            @click="deleteTimeEntries"
+            class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+          >
+            Delete Selected
+          </button>
+        </div>
+
+        <!-- Entries Table -->
+        <div class="bg-white rounded-lg shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-6 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    :checked="selectedEntries.size === timeEntriesWithDetails.length"
+                    @change="
+                      (e) => {
+                        if (e.target.checked) {
+                          timeEntriesWithDetails.forEach((entry) => selectedEntries.add(entry.id))
+                        } else {
+                          selectedEntries.clear()
+                        }
+                      }
+                    "
+                    class="rounded border-gray-300"
+                  />
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Date
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Employee
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Project
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Hours
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Status
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr v-for="entry in timeEntriesWithDetails" :key="entry.id">
+                <td class="px-6 py-4">
+                  <input
+                    type="checkbox"
+                    :checked="selectedEntries.has(entry.id)"
+                    @change="
+                      (e) => {
+                        if (e.target.checked) {
+                          selectedEntries.add(entry.id)
+                        } else {
+                          selectedEntries.delete(entry.id)
+                        }
+                      }
+                    "
+                    class="rounded border-gray-300"
+                  />
+                </td>
+                <td class="px-6 py-4">{{ formatDate(entry.date) }}</td>
+                <td class="px-6 py-4">
+                  {{ entry.employee.firstName }} {{ entry.employee.lastName }}
+                  <span
+                    class="ml-1 text-xs px-2 py-0.5 rounded-full"
+                    :class="{
+                      'bg-blue-100 text-blue-800': entry.employee.employeeType === 'LOCAL',
+                      'bg-green-100 text-green-800': entry.employee.employeeType === 'UNION',
+                    }"
+                  >
+                    {{ entry.employee.employeeType }}
+                  </span>
+                </td>
+                <td class="px-6 py-4">{{ entry.project?.name || '-' }}</td>
+                <td class="px-6 py-4">
+                  <div>Regular: {{ entry.regularHours }}h</div>
+                  <div>OT: {{ entry.overtimeHours }}h</div>
+                </td>
+                <td class="px-6 py-4">
+                  <span
+                    class="px-2 py-1 text-xs rounded-full"
+                    :class="{
+                      'bg-yellow-100 text-yellow-800': entry.paymentStatus === 'PENDING',
+                      'bg-blue-100 text-blue-800': entry.paymentStatus === 'PROCESSING',
+                      'bg-green-100 text-green-800': entry.paymentStatus === 'PAID',
+                      'bg-red-100 text-red-800': entry.paymentStatus === 'CANCELLED',
+                    }"
+                  >
+                    {{ entry.paymentStatus.toLowerCase() }}
+                  </span>
+                </td>
+                <td class="px-6 py-4">
+                  <button @click="openEditModal(entry)" class="text-gray-600 hover:text-gray-900">
+                    <PencilIcon class="w-5 h-5" />
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Add inside the manage view div -->
+        <!-- Edit Modal -->
+        <div
+          v-if="showEditModal && editingEntry"
+          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+        >
+          <div class="bg-white rounded-lg p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-xl font-bold">Edit Time Entry</h2>
+              <button @click="showEditModal = false" class="text-gray-500 hover:text-gray-700">
+                <XMarkIcon class="w-6 h-6" />
+              </button>
+            </div>
+
+            <form @submit.prevent="handleEditSave" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Regular Hours</label>
+                <input
+                  v-model="editingEntry.regularHours"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Overtime Hours</label>
+                <input
+                  v-model="editingEntry.overtimeHours"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  @click="showEditModal = false"
+                  class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Local Employee Payments -->
+      <div v-else-if="manageViewTab === 'local'" class="space-y-6">
+        <!-- TODO: Implement Local Employee Payments -->
+      </div>
+
+      <!-- Union Employee Payments -->
+      <div v-else-if="manageViewTab === 'union'" class="space-y-6">
+        <!-- TODO: Implement Union Employee Payments -->
+      </div>
+    </div>
+
+    <div v-if="viewMode === 'entry'" class="space-y-6">
       <!-- Entry Form -->
       <div class="bg-white rounded-lg p-6 shadow-sm space-y-6">
         <!-- Date and Project Selection -->

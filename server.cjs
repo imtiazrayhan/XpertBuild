@@ -357,7 +357,19 @@ app.put('/api/time-entries/:id', async (req, res) => {
   }
 })
 
-// Add to server.cjs
+// Delete time entry
+app.delete('/api/time-entries/:id', async (req, res) => {
+  try {
+    await prisma.timeEntry.delete({
+      where: { id: parseInt(req.params.id) },
+    })
+    res.json({ message: 'Time entry deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete time entry' })
+  }
+})
+
+// Get time entries for a date range with full details
 app.get('/api/time-entries/range', async (req, res) => {
   const { startDate, endDate } = req.query
 
@@ -377,7 +389,9 @@ app.get('/api/time-entries/range', async (req, res) => {
         },
         project: true,
       },
-      orderBy: { date: 'asc' },
+      orderBy: {
+        date: 'desc',
+      },
     })
     res.json(entries)
   } catch (error) {
