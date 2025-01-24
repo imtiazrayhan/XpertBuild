@@ -11,17 +11,15 @@ interface Employee {
   employeeType: 'LOCAL'
 }
 
-interface TimeEntry {
-  id: number
+interface TimeEntryInput {
   employeeId: number
-  date: string
-  regularHours: number
-  paymentStatus: 'PENDING' | 'PAID'
+  hours: number
+  projectId: string
 }
-
 interface EditEntryData {
   id: number
   employeeId: number
+  projectId?: string
   date: string
   hours: number
 }
@@ -35,11 +33,22 @@ const editEntryData = ref<EditEntryData | null>(null)
 
 const newEntries = ref<{
   date: string
-  entries: { employeeId: number; hours: number }[]
+  entries: TimeEntryInput[]
 }>({
   date: new Date().toISOString().split('T')[0],
   entries: [],
 })
+
+const projects = ref<{ id: string; name: string }[]>([])
+
+const fetchProjects = async () => {
+  try {
+    const response = await fetch('/api/projects')
+    projects.value = await response.json()
+  } catch (error) {
+    console.error('Error fetching projects:', error)
+  }
+}
 
 const modalDate = computed({
   get: () =>
@@ -53,6 +62,16 @@ const modalDate = computed({
   },
 })
 
+const resetEmployeeForm = () => {
+  newEntries.value = {
+    date: new Date().toISOString().split('T')[0],
+    entries: employees.value.map((emp) => ({
+      employeeId: emp.id,
+      hours: 0,
+      projectId: '',
+    })),
+  }
+}
 // Calculate start and end of week
 function getStartOfWeek(date: Date): Date {
   const d = new Date(date)
@@ -142,6 +161,23 @@ const outstandingBalances = computed(() => {
   })
 })
 
+// Add this computed property
+const selectedProject = computed({
+  get: () => {
+    if (editMode.value && editEntryData.value) {
+      return editEntryData.value.projectId
+    }
+    return newEntries.value.projectId
+  },
+  set: (value) => {
+    if (editMode.value && editEntryData.value) {
+      editEntryData.value.projectId = value
+    } else {
+      newEntries.value.projectId = value
+    }
+  },
+})
+
 // Fetch data
 const fetchEmployees = async () => {
   try {
@@ -194,6 +230,7 @@ const submitTimeEntries = async () => {
           date: date.toISOString(),
           regularHours: editEntryData.value.hours,
           overtimeHours: 0,
+          projectId: editEntryData.value.projectId,
           type: 'REGULAR',
         }),
       })
@@ -209,6 +246,7 @@ const submitTimeEntries = async () => {
               date: date.toISOString(),
               regularHours: entry.hours,
               overtimeHours: 0,
+              projectId: entry.projectId,
               type: 'REGULAR',
             }),
           }),
@@ -270,6 +308,7 @@ const formatCurrency = (amount: number) => {
 onMounted(() => {
   fetchEmployees()
   fetchTimeEntries()
+  fetchProjects()
 })
 </script>
 
@@ -423,7 +462,20 @@ onMounted(() => {
                 {{ employees.find((emp) => emp.id === entry.employeeId)?.lastName }}
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2"> Hours </label>
+                <label class="block text-sm font-medium text-gray-700">Project</label>
+                <select
+                  v-model="entry.projectId"
+                  required
+                  class="block w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">Select Project</option>
+                  <option v-for="project in projects" :key="project.id" :value="project.id">
+                    {{ project.name }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Hours</label>
                 <input
                   v-model="entry.hours"
                   type="number"

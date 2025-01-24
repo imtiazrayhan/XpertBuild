@@ -4,8 +4,7 @@ import ProjectsPage from '../views/ProjectsPage.vue'
 import ExpensesPage from '../views/ExpensesPage.vue'
 import EmployeesPage from '../views/EmployeesPage.vue'
 import UnionClassesPage from '../views/UnionClassesPage.vue'
-import LocalTimesheetPage from '../views/LocalTimesheetPage.vue'
-import UnionTimesheetPage from '../views/UnionTimesheetPage.vue'
+import TimesheetPage from '../views/TimesheetPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -36,14 +35,9 @@ const router = createRouter({
       component: UnionClassesPage,
     },
     {
-      path: '/local-timesheet',
-      name: 'local-timesheet',
-      component: LocalTimesheetPage,
-    },
-    {
-      path: '/union-timesheet',
-      name: 'union-timesheet',
-      component: UnionTimesheetPage,
+      path: '/timesheet',
+      name: 'timesheet',
+      component: TimesheetPage,
     },
   ],
 })

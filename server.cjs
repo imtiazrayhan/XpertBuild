@@ -275,101 +275,84 @@ app.delete('/api/employees/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete employee' })
   }
 })
-// Get all time entries
-app.get('/api/time-entries', async (req, res) => {
+
+// Add to server.cjs
+
+// Bulk create time entries
+app.post('/api/time-entries/bulk', async (req, res) => {
   try {
-    const timeEntries = await prisma.timeEntry.findMany({
-      where: {
-        employee: {
-          employeeType: 'LOCAL',
+    const entries = req.body
+    const createPromises = entries.map((entry) => {
+      const date = new Date(entry.date)
+      date.setUTCHours(12, 0, 0, 0)
+
+      // Calculate week number
+      const weekDate = new Date(date)
+      weekDate.setDate(weekDate.getDate() + 4 - (weekDate.getDay() || 7))
+      const yearStart = new Date(weekDate.getFullYear(), 0, 1)
+      const weekNumber = Math.ceil(((weekDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+      const yearNumber = date.getFullYear()
+
+      return prisma.timeEntry.create({
+        data: {
+          employeeId: entry.employeeId,
+          projectId: entry.projectId,
+          date,
+          regularHours: entry.regularHours,
+          overtimeHours: entry.overtimeHours,
+          type: entry.overtimeHours > 0 ? 'OVERTIME' : 'REGULAR',
+          weekNumber,
+          yearNumber,
+          paymentStatus: 'PENDING',
         },
-      },
-      include: {
-        employee: true,
-      },
-      orderBy: {
-        date: 'desc',
-      },
+      })
     })
-    res.json(timeEntries)
+
+    await prisma.$transaction(createPromises)
+    res.json({ message: 'Time entries created successfully' })
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch time entries' })
+    console.error('Error creating time entries:', error)
+    res.status(500).json({ error: 'Failed to create time entries' })
   }
 })
 
-// Create time entry
-app.post('/api/time-entries', async (req, res) => {
-  try {
-    const timeEntry = await prisma.timeEntry.create({
-      data: {
-        employeeId: req.body.employeeId,
-        date: new Date(req.body.date),
-        regularHours: req.body.regularHours,
-        overtimeHours: 0,
-        type: 'REGULAR',
-        weekNumber: getWeekNumber(new Date(req.body.date)),
-        yearNumber: new Date(req.body.date).getFullYear(),
-        paymentStatus: 'PENDING',
-      },
-    })
-    res.json(timeEntry)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create time entry' })
-  }
-})
+// Get time entries by week
+app.get('/api/time-entries', async (req, res) => {
+  const { weekNumber, yearNumber } = req.query
 
-// Update time entry payment status
-app.patch('/api/time-entries/:id', async (req, res) => {
-  try {
-    const timeEntry = await prisma.timeEntry.update({
-      where: { id: parseInt(req.params.id) },
-      data: {
-        paymentStatus: req.body.paymentStatus,
-      },
-    })
-    res.json(timeEntry)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update time entry' })
-  }
-})
-
-// Get all unpaid entries for an employee
-app.get('/api/time-entries/unpaid/:employeeId', async (req, res) => {
   try {
     const entries = await prisma.timeEntry.findMany({
       where: {
-        employeeId: parseInt(req.params.employeeId),
-        paymentStatus: 'PENDING',
+        weekNumber: Number(weekNumber),
+        yearNumber: Number(yearNumber),
+      },
+      include: {
+        employee: true,
+        project: true,
+      },
+      orderBy: {
+        date: 'asc',
       },
     })
     res.json(entries)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch unpaid entries' })
+    res.status(500).json({ error: 'Failed to fetch time entries' })
   }
 })
 
 // Update time entry
 app.put('/api/time-entries/:id', async (req, res) => {
   try {
-    const timeEntry = await prisma.timeEntry.update({
+    const entry = await prisma.timeEntry.update({
       where: { id: parseInt(req.params.id) },
       data: {
-        date: new Date(req.body.date),
         regularHours: req.body.regularHours,
         overtimeHours: req.body.overtimeHours,
+        type: req.body.overtimeHours > 0 ? 'OVERTIME' : 'REGULAR',
       },
     })
-    res.json(timeEntry)
+    res.json(entry)
   } catch (error) {
     res.status(500).json({ error: 'Failed to update time entry' })
   }
 })
-
-// Helper function to get week number
-function getWeekNumber(date) {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 4 - (d.getDay() || 7))
-  const yearStart = new Date(d.getFullYear(), 0, 1)
-  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
-}
