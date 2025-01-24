@@ -356,3 +356,31 @@ app.put('/api/time-entries/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to update time entry' })
   }
 })
+
+// Add to server.cjs
+app.get('/api/time-entries/range', async (req, res) => {
+  const { startDate, endDate } = req.query
+
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: true,
+          },
+        },
+        project: true,
+      },
+      orderBy: { date: 'asc' },
+    })
+    res.json(entries)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch time entries' })
+  }
+})
