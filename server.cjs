@@ -464,6 +464,7 @@ app.post('/api/time-entries/update-status', async (req, res) => {
   const { employeeId, weekNumber, yearNumber, status } = req.body
 
   try {
+    // Update time entries
     await prisma.timeEntry.updateMany({
       where: {
         employeeId,
@@ -477,23 +478,28 @@ app.post('/api/time-entries/update-status', async (req, res) => {
 
     // Create payment record if status is PAID
     if (status === 'PAID') {
+      // Get time entries with employee data
       const timeEntries = await prisma.timeEntry.findMany({
         where: {
           employeeId,
           weekNumber,
           yearNumber,
         },
+        include: {
+          employee: true,
+        },
       })
 
-      const totalAmount = timeEntries.reduce(async (sum, entry) => {
-        const employee = await prisma.employee.findUnique({
-          where: { id: entry.employeeId },
-        })
-        const hourlyRate = employee?.hourlyRate || 0
-        return sum + entry.regularHours * hourlyRate + entry.overtimeHours * hourlyRate * 1.5
+      // Calculate total amount
+      const totalAmount = timeEntries.reduce((sum, entry) => {
+        const hourlyRate = entry.employee.hourlyRate || 0
+        const regularPay = entry.regularHours * hourlyRate
+        const overtimePay = entry.overtimeHours * (hourlyRate * 1.5)
+        return sum + regularPay + overtimePay
       }, 0)
 
-      await prisma.payment.create({
+      // Create payment record
+      const payment = await prisma.payment.create({
         data: {
           employeeId,
           amount: totalAmount,
@@ -503,10 +509,46 @@ app.post('/api/time-entries/update-status', async (req, res) => {
           status: 'PAID',
         },
       })
+
+      // Link time entries to payment
+      await prisma.$transaction(
+        timeEntries.map((entry) =>
+          prisma.timeEntry.update({
+            where: { id: entry.id },
+            data: { paymentId: payment.id },
+          }),
+        ),
+      )
     }
 
     res.json({ message: 'Payment status updated successfully' })
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update payment status' })
+    console.error('Error updating payment status:', error)
+    res.status(500).json({ error: 'Failed to update payment status', details: error.message })
+  }
+})
+
+// Add to server.cjs
+
+// Update the /api/payments/employee/:id endpoint in server.cjs
+
+app.get('/api/payments/employee/:id', async (req, res) => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: {
+        employeeId: parseInt(req.params.id),
+      },
+      include: {
+        employee: true,
+      },
+      orderBy: [{ yearNumber: 'desc' }, { weekNumber: 'desc' }],
+    })
+
+    // Add logging to debug
+    console.log('Payments found:', payments)
+    res.json(payments)
+  } catch (error) {
+    console.error('Error in /api/payments/employee/:id:', error)
+    res.status(500).json({ error: 'Failed to fetch payment history', details: error.message })
   }
 })

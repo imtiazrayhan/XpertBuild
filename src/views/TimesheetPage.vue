@@ -570,8 +570,6 @@ watch(calendarView, async () => {
   }
 })
 
-// Add to script section:
-
 interface WeeklyPayment {
   weekNumber: number
   yearNumber: number
@@ -653,6 +651,44 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+interface PaymentRecord {
+  id: number
+  amount: number
+  date: string
+  weekNumber: number
+  yearNumber: number
+  status: PaymentStatus
+  notes?: string
+  employee: Employee
+  timeEntries?: TimeEntry[]
+}
+
+const showPaymentHistory = ref(false)
+const selectedEmployeeId = ref<number | null>(null)
+const paymentHistory = ref<PaymentRecord[]>([])
+
+const fetchPaymentHistory = async (employeeId: number) => {
+  try {
+    const response = await fetch(`/api/payments/employee/${employeeId}`)
+    const data = await response.json()
+    console.log('Payment history received:', data)
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch payment history')
+    }
+
+    paymentHistory.value = data
+  } catch (error) {
+    console.error('Error fetching payment history:', error)
+  }
+}
+
+const openPaymentHistory = async (employeeId: number) => {
+  console.log('Opening payment history for employee:', employeeId)
+  selectedEmployeeId.value = employeeId
+  await fetchPaymentHistory(employeeId)
+  showPaymentHistory.value = true
+}
 // Add watch for selectedWeek
 watch(selectedWeek, () => {
   if (selectedWeek.value) {
@@ -945,7 +981,7 @@ onMounted(() => {
                       'bg-red-100 text-red-800': entry.paymentStatus === 'CANCELLED',
                     }"
                   >
-                    {{ entry.paymentStatus.toLowerCase() }}
+                    {{ entry.paymentStatus }}
                   </span>
                 </td>
                 <td class="px-6 py-4">
@@ -1162,8 +1198,14 @@ onMounted(() => {
                       'bg-red-100 text-red-800': payment.status === 'CANCELLED',
                     }"
                   >
-                    {{ payment.status.toLowerCase() }}
+                    {{ payment.status }}
                   </span>
+                  <button
+                    @click="openPaymentHistory(payment.employee.id)"
+                    class="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                  >
+                    View History
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -1189,6 +1231,79 @@ onMounted(() => {
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        <!-- Payment History Modal -->
+        <div
+          v-if="showPaymentHistory"
+          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+        >
+          <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-xl font-bold">Payment History</h2>
+              <button @click="showPaymentHistory = false" class="text-gray-500 hover:text-gray-700">
+                <XMarkIcon class="w-6 h-6" />
+              </button>
+            </div>
+
+            <div class="space-y-4">
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr class="bg-gray-50">
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Week
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Date Paid
+                      </th>
+                      <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                        Amount
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Status
+                      </th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Notes
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200">
+                    <tr v-for="payment in paymentHistory" :key="payment.id">
+                      <td class="px-6 py-4">
+                        Week {{ payment.weekNumber }}, {{ payment.yearNumber }}
+                      </td>
+                      <td class="px-6 py-4">{{ formatDate(payment.date) }}</td>
+                      <td class="px-6 py-4 text-right">{{ formatCurrency(payment.amount) }}</td>
+                      <td class="px-6 py-4">
+                        <span
+                          class="px-2 py-1 text-xs rounded-full"
+                          :class="{
+                            'bg-yellow-100 text-yellow-800': payment.status === 'PENDING',
+                            'bg-blue-100 text-blue-800': payment.status === 'PROCESSING',
+                            'bg-green-100 text-green-800': payment.status === 'PAID',
+                            'bg-red-100 text-red-800': payment.status === 'CANCELLED',
+                          }"
+                        >
+                          {{ payment.status }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-4">{{ payment.notes || '-' }}</td>
+                    </tr>
+                  </tbody>
+                  <tfoot class="bg-gray-50">
+                    <tr>
+                      <td colspan="2" class="px-6 py-4 font-medium">Total</td>
+                      <td class="px-6 py-4 text-right font-medium">
+                        {{ formatCurrency(paymentHistory.reduce((sum, p) => sum + p.amount, 0)) }}
+                      </td>
+                      <td colspan="2"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

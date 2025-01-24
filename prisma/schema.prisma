@@ -132,20 +132,22 @@ model UnionClassRate {
 }
 
 model TimeEntry {
-  id          Int       @id @default(autoincrement())
-  employee    Employee  @relation(fields: [employeeId], references: [id])
-  employeeId  Int
-  project     Project?  @relation(fields: [projectId], references: [id])
-  projectId   String?
-  date        DateTime
-  regularHours Float    @default(0)
-  overtimeHours Float   @default(0)
-  type        TimeType
-  weekNumber  Int      // Calculated field for easy weekly grouping
-  yearNumber  Int      // Calculated field for easy yearly grouping
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            Int           @id @default(autoincrement())
+  employee      Employee      @relation(fields: [employeeId], references: [id])
+  employeeId    Int
+  project       Project?      @relation(fields: [projectId], references: [id])
+  projectId     String?
+  date          DateTime
+  regularHours  Float         @default(0)
+  overtimeHours Float         @default(0)
+  type          TimeType
+  weekNumber    Int
+  yearNumber    Int
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   paymentStatus PaymentStatus @default(PENDING)
+  payment       Payment?      @relation(fields: [paymentId], references: [id])
+  paymentId     Int?
 
   @@index([employeeId, date])
   @@index([projectId, date])
@@ -162,6 +164,7 @@ model Payment {
   yearNumber  Int
   status      PaymentStatus
   notes       String?
+  timeEntries TimeEntry[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
