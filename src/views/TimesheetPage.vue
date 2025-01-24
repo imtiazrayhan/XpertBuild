@@ -570,6 +570,96 @@ watch(calendarView, async () => {
   }
 })
 
+// Add to script section:
+
+interface WeeklyPayment {
+  weekNumber: number
+  yearNumber: number
+  employee: Employee
+  regularHours: number
+  overtimeHours: number
+  regularPay: number
+  overtimePay: number
+  totalPay: number
+  timeEntries: TimeEntry[]
+  status: PaymentStatus
+}
+
+const selectedWeek = ref<{ weekNumber: number; yearNumber: number } | null>(null)
+const weeklyPayments = ref<WeeklyPayment[]>([])
+const selectedPayments = ref<Set<string>>(new Set()) // employeeId-weekNumber-yearNumber
+
+const calculateLocalPayment = (timeEntries: TimeEntry[], employee: Employee): WeeklyPayment => {
+  const regularHours = timeEntries.reduce((sum, entry) => sum + entry.regularHours, 0)
+  const overtimeHours = timeEntries.reduce((sum, entry) => sum + entry.overtimeHours, 0)
+  const hourlyRate = employee.hourlyRate || 0
+
+  return {
+    weekNumber: timeEntries[0].weekNumber,
+    yearNumber: timeEntries[0].yearNumber,
+    employee,
+    regularHours,
+    overtimeHours,
+    regularPay: regularHours * hourlyRate,
+    overtimePay: overtimeHours * (hourlyRate * 1.5),
+    totalPay: regularHours * hourlyRate + overtimeHours * (hourlyRate * 1.5),
+    timeEntries,
+    status: timeEntries[0].paymentStatus,
+  }
+}
+
+const fetchLocalPayments = async () => {
+  if (!selectedWeek.value) return
+
+  try {
+    const response = await fetch(
+      `/api/time-entries/local-payments?weekNumber=${selectedWeek.value.weekNumber}&yearNumber=${selectedWeek.value.yearNumber}`,
+    )
+    const data = await response.json()
+    weeklyPayments.value = data
+  } catch (error) {
+    console.error('Error fetching local payments:', error)
+  }
+}
+
+const updatePaymentStatus = async (status: PaymentStatus) => {
+  try {
+    const updatePromises = Array.from(selectedPayments.value).map(async (key) => {
+      const [employeeId, weekNumber, yearNumber] = key.split('-')
+      return fetch('/api/time-entries/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: parseInt(employeeId),
+          weekNumber: parseInt(weekNumber),
+          yearNumber: parseInt(yearNumber),
+          status,
+        }),
+      })
+    })
+
+    await Promise.all(updatePromises)
+    await fetchLocalPayments()
+    selectedPayments.value.clear()
+  } catch (error) {
+    console.error('Error updating payment status:', error)
+  }
+}
+
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(value)
+}
+
+// Add watch for selectedWeek
+watch(selectedWeek, () => {
+  if (selectedWeek.value) {
+    fetchLocalPayments()
+  }
+})
+
 onMounted(() => {
   fetchEmployees()
   fetchProjects()
@@ -927,8 +1017,179 @@ onMounted(() => {
       </div>
 
       <!-- Local Employee Payments -->
-      <div v-else-if="manageViewTab === 'local'" class="space-y-6">
-        <!-- TODO: Implement Local Employee Payments -->
+
+      <div v-if="manageViewTab === 'local'" class="space-y-6">
+        <!-- Week Selection -->
+        <div class="bg-white rounded-lg p-6 shadow-sm">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Select Week</label>
+              <input
+                type="week"
+                :value="
+                  selectedWeek
+                    ? `${selectedWeek.yearNumber}-W${String(selectedWeek.weekNumber).padStart(2, '0')}`
+                    : ''
+                "
+                @input="
+                  (e) => {
+                    const [year, week] = e.target.value.split('-W')
+                    selectedWeek = {
+                      weekNumber: parseInt(week),
+                      yearNumber: parseInt(year),
+                    }
+                  }
+                "
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-between items-center">
+          <div>
+            <span class="text-gray-700"> {{ selectedPayments.size }} payments selected </span>
+          </div>
+          <div class="flex space-x-3" v-if="selectedPayments.size > 0">
+            <button
+              @click="updatePaymentStatus('PROCESSING')"
+              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              Mark Processing
+            </button>
+            <button
+              @click="updatePaymentStatus('PAID')"
+              class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+            >
+              Mark Paid
+            </button>
+          </div>
+        </div>
+
+        <!-- Payments Table -->
+        <div class="bg-white rounded-lg shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="px-6 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    :checked="selectedPayments.size === weeklyPayments.length"
+                    @change="
+                      (e) => {
+                        if (e.target.checked) {
+                          weeklyPayments.forEach((payment) => {
+                            selectedPayments.add(
+                              `${payment.employee.id}-${payment.weekNumber}-${payment.yearNumber}`,
+                            )
+                          })
+                        } else {
+                          selectedPayments.clear()
+                        }
+                      }
+                    "
+                    class="rounded border-gray-300"
+                  />
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Employee
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Regular Hours
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  OT Hours
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Regular Pay
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  OT Pay
+                </th>
+                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Total
+                </th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr
+                v-for="payment in weeklyPayments"
+                :key="`${payment.employee.id}-${payment.weekNumber}-${payment.yearNumber}`"
+              >
+                <td class="px-6 py-4">
+                  <input
+                    type="checkbox"
+                    :checked="
+                      selectedPayments.has(
+                        `${payment.employee.id}-${payment.weekNumber}-${payment.yearNumber}`,
+                      )
+                    "
+                    @change="
+                      (e) => {
+                        const key = `${payment.employee.id}-${payment.weekNumber}-${payment.yearNumber}`
+                        if (e.target.checked) {
+                          selectedPayments.add(key)
+                        } else {
+                          selectedPayments.delete(key)
+                        }
+                      }
+                    "
+                    class="rounded border-gray-300"
+                  />
+                </td>
+                <td class="px-6 py-4">
+                  {{ payment.employee.firstName }} {{ payment.employee.lastName }}
+                  <div class="text-sm text-gray-500">${{ payment.employee.hourlyRate }}/hr</div>
+                </td>
+                <td class="px-6 py-4 text-right">{{ payment.regularHours }}</td>
+                <td class="px-6 py-4 text-right">{{ payment.overtimeHours }}</td>
+                <td class="px-6 py-4 text-right">{{ formatCurrency(payment.regularPay) }}</td>
+                <td class="px-6 py-4 text-right">{{ formatCurrency(payment.overtimePay) }}</td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ formatCurrency(payment.totalPay) }}
+                </td>
+                <td class="px-6 py-4">
+                  <span
+                    class="px-2 py-1 text-xs rounded-full"
+                    :class="{
+                      'bg-yellow-100 text-yellow-800': payment.status === 'PENDING',
+                      'bg-blue-100 text-blue-800': payment.status === 'PROCESSING',
+                      'bg-green-100 text-green-800': payment.status === 'PAID',
+                      'bg-red-100 text-red-800': payment.status === 'CANCELLED',
+                    }"
+                  >
+                    {{ payment.status.toLowerCase() }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot class="bg-gray-50">
+              <tr>
+                <td colspan="2" class="px-6 py-4 font-medium">Totals</td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ weeklyPayments.reduce((sum, p) => sum + p.regularHours, 0) }}
+                </td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ weeklyPayments.reduce((sum, p) => sum + p.overtimeHours, 0) }}
+                </td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ formatCurrency(weeklyPayments.reduce((sum, p) => sum + p.regularPay, 0)) }}
+                </td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ formatCurrency(weeklyPayments.reduce((sum, p) => sum + p.overtimePay, 0)) }}
+                </td>
+                <td class="px-6 py-4 text-right font-medium">
+                  {{ formatCurrency(weeklyPayments.reduce((sum, p) => sum + p.totalPay, 0)) }}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
 
       <!-- Union Employee Payments -->

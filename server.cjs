@@ -398,3 +398,115 @@ app.get('/api/time-entries/range', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch time entries' })
   }
 })
+
+// Add to server.cjs
+
+// Get local employee payments by week
+app.get('/api/time-entries/local-payments', async (req, res) => {
+  const { weekNumber, yearNumber } = req.query
+
+  try {
+    // Get all local employees
+    const localEmployees = await prisma.employee.findMany({
+      where: {
+        employeeType: 'LOCAL',
+      },
+    })
+
+    // Get time entries for the week
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        weekNumber: parseInt(weekNumber),
+        yearNumber: parseInt(yearNumber),
+        employee: {
+          employeeType: 'LOCAL',
+        },
+      },
+      include: {
+        employee: true,
+      },
+    })
+
+    // Group entries by employee
+    const groupedEntries = localEmployees
+      .map((employee) => {
+        const employeeEntries = timeEntries.filter((entry) => entry.employeeId === employee.id)
+
+        if (employeeEntries.length === 0) return null
+
+        const regularHours = employeeEntries.reduce((sum, entry) => sum + entry.regularHours, 0)
+        const overtimeHours = employeeEntries.reduce((sum, entry) => sum + entry.overtimeHours, 0)
+        const hourlyRate = employee.hourlyRate || 0
+
+        return {
+          weekNumber: parseInt(weekNumber),
+          yearNumber: parseInt(yearNumber),
+          employee,
+          regularHours,
+          overtimeHours,
+          regularPay: regularHours * hourlyRate,
+          overtimePay: overtimeHours * (hourlyRate * 1.5),
+          totalPay: regularHours * hourlyRate + overtimeHours * (hourlyRate * 1.5),
+          timeEntries: employeeEntries,
+          status: employeeEntries[0]?.paymentStatus || 'PENDING',
+        }
+      })
+      .filter(Boolean) // Remove null entries
+
+    res.json(groupedEntries)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch local payments' })
+  }
+})
+
+// Update payment status for time entries
+app.post('/api/time-entries/update-status', async (req, res) => {
+  const { employeeId, weekNumber, yearNumber, status } = req.body
+
+  try {
+    await prisma.timeEntry.updateMany({
+      where: {
+        employeeId,
+        weekNumber,
+        yearNumber,
+      },
+      data: {
+        paymentStatus: status,
+      },
+    })
+
+    // Create payment record if status is PAID
+    if (status === 'PAID') {
+      const timeEntries = await prisma.timeEntry.findMany({
+        where: {
+          employeeId,
+          weekNumber,
+          yearNumber,
+        },
+      })
+
+      const totalAmount = timeEntries.reduce(async (sum, entry) => {
+        const employee = await prisma.employee.findUnique({
+          where: { id: entry.employeeId },
+        })
+        const hourlyRate = employee?.hourlyRate || 0
+        return sum + entry.regularHours * hourlyRate + entry.overtimeHours * hourlyRate * 1.5
+      }, 0)
+
+      await prisma.payment.create({
+        data: {
+          employeeId,
+          amount: totalAmount,
+          date: new Date(),
+          weekNumber,
+          yearNumber,
+          status: 'PAID',
+        },
+      })
+    }
+
+    res.json({ message: 'Payment status updated successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update payment status' })
+  }
+})
