@@ -19,6 +19,8 @@ interface Employee {
   hourlyRate?: number
   unionClassId?: number
   selected?: boolean
+  regularHours?: number
+  overtimeHours?: number
 }
 
 interface Project {
@@ -34,6 +36,7 @@ const projects = ref<Project[]>([])
 const defaultRegularHours = ref(8)
 const defaultOvertimeHours = ref(0)
 const employeeFilter = ref<'ALL' | 'LOCAL' | 'UNION'>('ALL')
+const showSuccessNotification = ref(false)
 
 const selectedEmployees = computed(() =>
   employees.value
@@ -44,16 +47,30 @@ const selectedEmployees = computed(() =>
     )
     .map((emp) => ({
       ...emp,
-      regularHours: emp.regularHours || defaultRegularHours.value,
-      overtimeHours: emp.overtimeHours || defaultOvertimeHours.value,
+      regularHours: emp.regularHours ?? defaultRegularHours.value,
+      overtimeHours: emp.overtimeHours ?? defaultOvertimeHours.value,
     })),
 )
+
+const getWeekNumber = (date: string) => {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7))
+  const yearStart = new Date(d.getFullYear(), 0, 1)
+  const weekNumber = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+  return { weekNumber, yearNumber: d.getFullYear() }
+}
 
 const fetchEmployees = async () => {
   try {
     const response = await fetch('/api/employees')
     const data = await response.json()
-    employees.value = data.map((emp: Employee) => ({ ...emp, selected: false }))
+    employees.value = data.map((emp: Employee) => ({
+      ...emp,
+      selected: false,
+      regularHours: undefined,
+      overtimeHours: undefined,
+    }))
   } catch (error) {
     console.error('Error fetching employees:', error)
   }
@@ -71,13 +88,11 @@ const fetchProjects = async () => {
   }
 }
 
-const getWeekNumber = (date: string) => {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 4 - (d.getDay() || 7))
-  const yearStart = new Date(d.getFullYear(), 0, 1)
-  const weekNumber = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-  return { weekNumber, yearNumber: d.getFullYear() }
+const showSuccessMessage = () => {
+  showSuccessNotification.value = true
+  setTimeout(() => {
+    showSuccessNotification.value = false
+  }, 3000)
 }
 
 const submitTimeEntries = async () => {
@@ -103,6 +118,7 @@ const submitTimeEntries = async () => {
 
     if (response.ok) {
       resetForm()
+      showSuccessMessage()
     }
   } catch (error) {
     console.error('Error submitting time entries:', error)
@@ -110,7 +126,11 @@ const submitTimeEntries = async () => {
 }
 
 const resetForm = () => {
-  employees.value.forEach((emp) => (emp.selected = false))
+  employees.value.forEach((emp) => {
+    emp.selected = false
+    emp.regularHours = undefined
+    emp.overtimeHours = undefined
+  })
   selectedProject.value = ''
   defaultRegularHours.value = 8
   defaultOvertimeHours.value = 0
@@ -122,6 +142,15 @@ fetchProjects()
 
 <template>
   <div class="space-y-6">
+    <!-- Success Notification -->
+    <div
+      v-if="showSuccessNotification"
+      class="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded"
+      role="alert"
+    >
+      <span class="block sm:inline">Time entries saved successfully!</span>
+    </div>
+
     <div class="flex justify-between items-center">
       <div>
         <h1 class="text-2xl font-bold">Timesheet</h1>
