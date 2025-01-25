@@ -105,7 +105,7 @@ const employeeFilter = ref<'ALL' | 'LOCAL' | 'UNION'>('ALL')
 const showSuccessNotification = ref(false)
 const viewMode = ref<'entry' | 'calendar' | 'manage'>('entry')
 const calendarView = ref<'week' | 'month'>('week')
-const currentDate = ref(new Date())
+const currentDate = ref(dateUtils.normalize(new Date()))
 const timeEntries = ref<TimeEntry[]>([])
 
 const getDayHoursByProject = (entries: TimeEntry[]): ProjectHours[] => {
@@ -219,16 +219,47 @@ const calculateHoursByType = (entries: TimeEntry[]) => {
 }
 
 const monthViewDates = computed(() => {
-  const start = dateUtils.normalize(
-    new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth(), 1),
-  )
-  const end = dateUtils.normalize(
-    new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth() + 1, 0),
-  )
+  const year = currentDate.value.getUTCFullYear()
+  const month = currentDate.value.getUTCMonth()
+
+  // Get first day of month
+  const firstDay = dateUtils.normalize(new Date(Date.UTC(year, month, 1)))
+  const firstDayOfWeek = firstDay.getUTCDay()
+
+  // Get last day of month
+  const lastDay = dateUtils.normalize(new Date(Date.UTC(year, month + 1, 0)))
+  const lastDate = lastDay.getUTCDate()
+
+  // Calculate days from previous month needed to fill first week
+  const daysFromPrevMonth = firstDayOfWeek
+  const prevMonth = month === 0 ? 11 : month - 1
+  const prevYear = month === 0 ? year - 1 : year
+
+  // Calculate days from next month needed to fill last week
+  const lastDayOfWeek = lastDay.getUTCDay()
+  const daysFromNextMonth = 6 - lastDayOfWeek
+
   const dates: Date[] = []
-  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    dates.push(dateUtils.normalize(d))
+
+  // Add days from previous month
+  for (let i = daysFromPrevMonth - 1; i >= 0; i--) {
+    const prevMonthLastDay = new Date(Date.UTC(prevYear, prevMonth + 1, 0))
+    const day = prevMonthLastDay.getUTCDate() - i
+    dates.push(dateUtils.normalize(new Date(Date.UTC(prevYear, prevMonth, day))))
   }
+
+  // Add days from current month
+  for (let day = 1; day <= lastDate; day++) {
+    dates.push(dateUtils.normalize(new Date(Date.UTC(year, month, day))))
+  }
+
+  // Add days from next month
+  const nextMonth = month === 11 ? 0 : month + 1
+  const nextYear = month === 11 ? year + 1 : year
+  for (let day = 1; day <= daysFromNextMonth; day++) {
+    dates.push(dateUtils.normalize(new Date(Date.UTC(nextYear, nextMonth, day))))
+  }
+
   return dates
 })
 
