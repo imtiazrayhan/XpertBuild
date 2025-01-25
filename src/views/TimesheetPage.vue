@@ -530,8 +530,22 @@ interface TimeEntryWithDetails extends TimeEntry {
 // Add to ref declarations
 const manageViewTab = ref<'entries' | 'local' | 'union'>('entries')
 const dateRange = ref({
-  start: '',
-  end: '',
+  start: (() => {
+    const today = dateUtils.normalize(new Date())
+    const day = today.getDay()
+    const mondayOffset = day === 0 ? -6 : 1 - day // If Sunday, go back 6 days, otherwise get last Monday
+    const lastMonday = new Date(today)
+    lastMonday.setDate(today.getDate() + mondayOffset - 7) // Subtract 7 to get last week
+    return dateUtils.format(lastMonday)
+  })(),
+  end: (() => {
+    const today = dateUtils.normalize(new Date())
+    const day = today.getDay()
+    const sundayOffset = day === 0 ? 0 : 7 - day
+    const lastSunday = new Date(today)
+    lastSunday.setDate(today.getDate() + sundayOffset - 7) // Subtract 7 to get last week
+    return dateUtils.format(lastSunday)
+  })(),
 })
 const selectedEntries = ref<Set<number>>(new Set())
 const timeEntriesWithDetails = ref<TimeEntryWithDetails[]>([])
@@ -631,6 +645,18 @@ watch(calendarView, async () => {
   } else {
     const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
     await fetchTimeEntries(calendarDates.value[0], lastDate)
+  }
+})
+
+watch(viewMode, (newMode) => {
+  if (newMode === 'manage' && dateRange.value.start && dateRange.value.end) {
+    fetchTimeEntriesWithDetails()
+  }
+})
+
+onMounted(() => {
+  if (viewMode.value === 'manage' && dateRange.value.start && dateRange.value.end) {
+    fetchTimeEntriesWithDetails()
   }
 })
 
