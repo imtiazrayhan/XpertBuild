@@ -317,6 +317,7 @@ app.post('/api/time-entries/bulk', async (req, res) => {
 })
 
 // Get time entries by week
+// Update the time entries endpoint in server.cjs
 app.get('/api/time-entries', async (req, res) => {
   const { weekNumber, yearNumber } = req.query
 
@@ -327,7 +328,19 @@ app.get('/api/time-entries', async (req, res) => {
         yearNumber: Number(yearNumber),
       },
       include: {
-        employee: true,
+        employee: {
+          include: {
+            unionClass: {
+              include: {
+                rates: {
+                  orderBy: {
+                    effectiveDate: 'desc',
+                  },
+                },
+              },
+            },
+          },
+        },
         project: true,
       },
       orderBy: {
@@ -336,6 +349,7 @@ app.get('/api/time-entries', async (req, res) => {
     })
     res.json(entries)
   } catch (error) {
+    console.error('Error fetching time entries:', error)
     res.status(500).json({ error: 'Failed to fetch time entries' })
   }
 })
@@ -550,5 +564,182 @@ app.get('/api/payments/employee/:id', async (req, res) => {
   } catch (error) {
     console.error('Error in /api/payments/employee/:id:', error)
     res.status(500).json({ error: 'Failed to fetch payment history', details: error.message })
+  }
+})
+
+// Union Payment Endpoints
+app.post('/api/union-payments/bulk', async (req, res) => {
+  try {
+    const { weekNumber, yearNumber, employeeIds, status } = req.body
+
+    // Get time entries for the week
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        weekNumber: parseInt(weekNumber),
+        yearNumber: parseInt(yearNumber),
+        employeeId: { in: employeeIds },
+        employee: {
+          employeeType: 'UNION',
+        },
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: {
+              include: {
+                rates: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    // Group by employee
+    const groupedEntries = timeEntries.reduce((acc, entry) => {
+      if (!acc[entry.employeeId]) acc[entry.employeeId] = []
+      acc[entry.employeeId].push(entry)
+      return acc
+    }, {})
+
+    // Process each employee's payments
+    const paymentPromises = Object.entries(groupedEntries).map(async ([employeeId, entries]) => {
+      const employee = entries[0].employee
+      const regularHours = entries.reduce((sum, entry) => sum + entry.regularHours, 0)
+      const overtimeHours = entries.reduce((sum, entry) => sum + entry.overtimeHours, 0)
+
+      // Get applicable rate
+      const weekDate = new Date(entries[0].date)
+      const applicableRate = employee.unionClass?.rates.find((rate) => {
+        const effectiveDate = new Date(rate.effectiveDate)
+        const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+        return weekDate >= effectiveDate && weekDate <= endDate
+      })
+
+      if (!applicableRate) {
+        throw new Error(`No applicable rate found for employee ${employeeId}`)
+      }
+
+      const regularPay = regularHours * applicableRate.regularRate
+      const overtimePay = overtimeHours * applicableRate.overtimeRate
+      const benefitsPay = (regularHours + overtimeHours) * applicableRate.benefitsRate
+      const totalPay = regularPay + overtimePay + benefitsPay
+
+      // Update time entries status
+      await prisma.timeEntry.updateMany({
+        where: { id: { in: entries.map((e) => e.id) } },
+        data: { paymentStatus: status },
+      })
+
+      // Create payment record if status is PAID
+      if (status === 'PAID') {
+        return prisma.payment.create({
+          data: {
+            employeeId: parseInt(employeeId),
+            amount: totalPay,
+            date: new Date(),
+            weekNumber: parseInt(weekNumber),
+            yearNumber: parseInt(yearNumber),
+            status,
+            notes: `Regular: ${regularPay}, OT: ${overtimePay}, Benefits: ${benefitsPay}`,
+          },
+        })
+      }
+    })
+
+    await prisma.$transaction(paymentPromises.filter(Boolean))
+    res.json({ message: 'Union payments processed successfully' })
+  } catch (error) {
+    console.error('Error processing union payments:', error)
+    res.status(500).json({ error: 'Failed to process union payments', details: error.message })
+  }
+})
+
+// Get union rates for a specific date
+app.get('/api/union-rates/:employeeId/:date', async (req, res) => {
+  try {
+    const { employeeId, date } = req.params
+    const checkDate = new Date(date)
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: parseInt(employeeId) },
+      include: {
+        unionClass: {
+          include: {
+            rates: true,
+          },
+        },
+      },
+    })
+
+    if (!employee || !employee.unionClass) {
+      return res.status(404).json({ error: 'Employee or union class not found' })
+    }
+
+    const applicableRate = employee.unionClass.rates.find((rate) => {
+      const effectiveDate = new Date(rate.effectiveDate)
+      const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+      return checkDate >= effectiveDate && checkDate <= endDate
+    })
+
+    if (!applicableRate) {
+      return res.status(404).json({ error: 'No applicable rate found for the date' })
+    }
+
+    res.json(applicableRate)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch union rates' })
+  }
+})
+
+// Get union payments summary by classification
+app.get('/api/union-payments/summary', async (req, res) => {
+  const { weekNumber, yearNumber } = req.query
+
+  try {
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        weekNumber: parseInt(String(weekNumber)),
+        yearNumber: parseInt(String(yearNumber)),
+        employee: {
+          employeeType: 'UNION',
+        },
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: true,
+          },
+        },
+      },
+    })
+
+    const summary = timeEntries.reduce((acc, entry) => {
+      const classId = entry.employee.unionClassId
+      if (!classId) return acc
+
+      if (!acc[classId]) {
+        acc[classId] = {
+          className: entry.employee.unionClass?.name || 'Unknown',
+          regularHours: 0,
+          overtimeHours: 0,
+          employeeCount: new Set(),
+        }
+      }
+
+      acc[classId].regularHours += entry.regularHours
+      acc[classId].overtimeHours += entry.overtimeHours
+      acc[classId].employeeCount.add(entry.employeeId)
+      return acc
+    }, {})
+
+    // Convert Sets to counts for JSON serialization
+    Object.values(summary).forEach((s) => {
+      s.employeeCount = s.employeeCount.size
+    })
+
+    res.json(summary)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch union payments summary' })
   }
 })
