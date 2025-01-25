@@ -855,9 +855,8 @@ const selectedUnionClass = ref('')
 // Computed
 const filteredPayments = computed(() => {
   if (!selectedUnionClass.value) return unionPayments.value
-  return unionPayments.value.filter(
-    (payment) => payment.employee.unionClassId?.toString() === selectedUnionClass.value,
-  )
+  const selectedId = parseInt(selectedUnionClass.value)
+  return unionPayments.value.filter((payment) => payment.employee.unionClassId === selectedId)
 })
 
 const summaryStats = computed(() => ({
