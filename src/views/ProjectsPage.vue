@@ -106,6 +106,71 @@ const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('en-US')
 }
 
+const showEditProjectModal = ref(false)
+const showDeleteConfirmation = ref(false)
+const selectedProject = ref<Project | null>(null)
+const editProject = ref<Project>({
+  id: '',
+  name: '',
+  contractValue: 0,
+  client: '',
+  contractType: 'DIRECT',
+  generalContractor: '',
+  startDate: '',
+  status: 'PLANNING',
+  address: '',
+})
+
+const openEditModal = (project: Project) => {
+  editProject.value = { ...project }
+  showEditProjectModal.value = true
+}
+
+const openDeleteConfirmation = (project: Project) => {
+  selectedProject.value = project
+  showDeleteConfirmation.value = true
+}
+
+const updateProject = async () => {
+  try {
+    const projectData = { ...editProject.value }
+    if (projectData.contractType === 'DIRECT') {
+      delete projectData.generalContractor
+    }
+
+    const response = await fetch(`/api/projects/${projectData.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(projectData),
+    })
+
+    if (response.ok) {
+      showEditProjectModal.value = false
+      await fetchProjects()
+    }
+  } catch (error) {
+    console.error('Error updating project:', error)
+  }
+}
+
+const deleteProject = async () => {
+  if (!selectedProject.value) return
+
+  try {
+    const response = await fetch(`/api/projects/${selectedProject.value.id}`, {
+      method: 'DELETE',
+    })
+
+    if (response.ok) {
+      showDeleteConfirmation.value = false
+      selectedProject.value = null
+      await fetchProjects()
+    }
+  } catch (error) {
+    console.error('Error deleting project:', error)
+  }
+}
+
 onMounted(fetchProjects)
 </script>
 
@@ -169,47 +234,225 @@ onMounted(fetchProjects)
       </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow-sm">
-      <div class="grid grid-cols-6 gap-4 p-4 font-medium text-gray-500 border-b">
-        <div class="col-span-2">PROJECT INFO</div>
-        <div>LOCATION</div>
-        <div>STATUS</div>
-        <div>CONTRACT VALUE</div>
-        <div>STARTED</div>
-      </div>
+    <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+              Project Name
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+              Location
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+              Contract Type
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+              General Contractor
+            </th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+              Contract Value
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          <tr
+            v-for="project in filteredProjects"
+            :key="project.id"
+            :class="['hover:bg-gray-50', project.contractType === 'DIRECT' ? 'bg-blue-50' : '']"
+          >
+            <td class="px-6 py-4">
+              <div class="font-medium text-gray-900">{{ project.name }}</div>
+              <span
+                class="mt-1 inline-flex px-2 py-1 text-xs rounded-full"
+                :class="{
+                  'bg-blue-100 text-blue-800': project.status === 'IN_PROGRESS',
+                  'bg-green-100 text-green-800': project.status === 'COMPLETED',
+                  'bg-yellow-100 text-yellow-800': project.status === 'PLANNING',
+                  'bg-gray-100 text-gray-800': project.status === 'ON_HOLD',
+                }"
+              >
+                {{ project.status.toLowerCase() }}
+              </span>
+            </td>
+            <td class="px-6 py-4">{{ project.address }}</td>
+            <td class="px-6 py-4">{{ project.client }}</td>
+            <td class="px-6 py-4">
+              {{ project.contractType === 'DIRECT' ? 'Direct' : 'Subcontract' }}
+            </td>
+            <td class="px-6 py-4">
+              {{ project.contractType === 'DIRECT' ? 'Self' : project.generalContractor }}
+            </td>
+            <td class="px-6 py-4 text-right font-medium">
+              {{ formatCurrency(project.contractValue) }}
+            </td>
+            <td class="px-6 py-4">{{ formatDate(project.startDate) }}</td>
+            <td class="px-6 py-4 text-right space-x-3">
+              <button @click="openEditModal(project)" class="text-blue-600 hover:text-blue-800">
+                Edit
+              </button>
+              <button
+                @click="openDeleteConfirmation(project)"
+                class="text-red-600 hover:text-red-800"
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Previous template code remains the same until the form -->
 
-      <div class="divide-y">
-        <div
-          v-for="project in filteredProjects"
-          :key="project.id"
-          class="grid grid-cols-6 gap-4 p-4 hover:bg-gray-50"
-        >
-          <div class="col-span-2">
-            <div class="font-medium">{{ project.name }}</div>
-            <div class="text-sm text-gray-500">
-              Client: <span class="text-purple-600">{{ project.client }}</span>
+    <!-- Edit Project Modal -->
+    <div
+      v-if="showEditProjectModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-xl font-bold">Edit Project</h2>
+          <button @click="showEditProjectModal = false" class="text-gray-500 hover:text-gray-700">
+            <XMarkIcon class="w-6 h-6" />
+          </button>
+        </div>
+
+        <form @submit.prevent="updateProject" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Project Name</label>
+              <input
+                v-model="editProject.name"
+                type="text"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Contract Value</label>
+              <input
+                v-model="editProject.contractValue"
+                type="number"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Client</label>
+              <select
+                v-model="editProject.client"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              >
+                <option value="">Select Client</option>
+                <option v-for="client in clients" :key="client" :value="client">
+                  {{ client }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Contract Type</label>
+              <select
+                v-model="editProject.contractType"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              >
+                <option value="DIRECT">Direct</option>
+                <option value="SUBCONTRACT">Subcontract</option>
+              </select>
+            </div>
+            <div v-if="editProject.contractType === 'SUBCONTRACT'">
+              <label class="block text-sm font-medium text-gray-700">General Contractor</label>
+              <input
+                v-model="editProject.generalContractor"
+                type="text"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Start Date</label>
+              <input
+                v-model="editProject.startDate"
+                type="date"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Status</label>
+              <select
+                v-model="editProject.status"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              >
+                <option v-for="status in statuses" :key="status" :value="status">
+                  {{ status }}
+                </option>
+              </select>
+            </div>
+            <div class="col-span-2">
+              <label class="block text-sm font-medium text-gray-700">Address</label>
+              <input
+                v-model="editProject.address"
+                type="text"
+                required
+                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+              />
             </div>
           </div>
-          <div>{{ project.address }}</div>
-          <div>
-            <span
-              class="px-2 py-1 rounded-full text-sm"
-              :class="{
-                'bg-blue-100 text-blue-800': project.status === 'IN_PROGRESS',
-                'bg-green-100 text-green-800': project.status === 'COMPLETED',
-                'bg-yellow-100 text-yellow-800': project.status === 'PLANNING',
-                'bg-gray-100 text-gray-800': project.status === 'ON_HOLD',
-              }"
+
+          <div class="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              @click="showEditProjectModal = false"
+              class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
             >
-              {{ project.status.toLowerCase() }}
-            </span>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Save Changes
+            </button>
           </div>
-          <div>{{ formatCurrency(project.contractValue) }}</div>
-          <div>{{ formatDate(project.startDate) }}</div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div
+      v-if="showDeleteConfirmation"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h2 class="text-xl font-bold mb-4">Delete Project</h2>
+        <p class="text-gray-600 mb-6">
+          Are you sure you want to delete "{{ selectedProject?.name }}"? This action cannot be
+          undone.
+        </p>
+        <div class="flex justify-end space-x-3">
+          <button
+            @click="showDeleteConfirmation = false"
+            class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="deleteProject"
+            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>
-    <!-- Previous template code remains the same until the form -->
 
     <!-- New Project Modal -->
     <div

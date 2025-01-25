@@ -50,6 +50,74 @@ app.post('/api/projects', async (req, res) => {
   }
 })
 
+app.put('/api/projects/:id', async (req, res) => {
+  try {
+    const projectData = { ...req.body }
+    if (projectData.contractType === 'DIRECT') {
+      delete projectData.generalContractor
+    }
+
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: {
+        name: projectData.name,
+        contractValue: projectData.contractValue,
+        client: projectData.client,
+        contractType: projectData.contractType,
+        generalContractor: projectData.generalContractor,
+        startDate: new Date(projectData.startDate),
+        status: projectData.status,
+        address: projectData.address,
+      },
+    })
+    res.json(project)
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.delete('/api/projects/:id', async (req, res) => {
+  try {
+    // Delete related records first
+    await prisma.$transaction([
+      prisma.workItemQuantity.deleteMany({
+        where: {
+          elevation: {
+            building: {
+              projectId: req.params.id,
+            },
+          },
+        },
+      }),
+      prisma.elevation.deleteMany({
+        where: {
+          building: {
+            projectId: req.params.id,
+          },
+        },
+      }),
+      prisma.building.deleteMany({
+        where: { projectId: req.params.id },
+      }),
+      prisma.projectWorkItem.deleteMany({
+        where: { projectId: req.params.id },
+      }),
+      prisma.expense.deleteMany({
+        where: { projectId: req.params.id },
+      }),
+      prisma.timeEntry.deleteMany({
+        where: { projectId: req.params.id },
+      }),
+      prisma.project.delete({
+        where: { id: req.params.id },
+      }),
+    ])
+    res.json({ message: 'Project deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete project' })
+  }
+})
+
 // Get project by ID
 app.get('/api/projects/:id', async (req, res) => {
   try {
