@@ -3,6 +3,41 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
+const dateUtils = {
+  normalize(date: Date | string): Date {
+    const d = new Date(date)
+    d.setUTCHours(12, 0, 0, 0)
+    return d
+  },
+
+  format(date: Date | string): string {
+    const d = this.normalize(date)
+    return d.toISOString().split('T')[0]
+  },
+
+  isSameDay(d1: Date | string, d2: Date | string): boolean {
+    const date1 = this.normalize(d1)
+    const date2 = this.normalize(d2)
+    return date1.getTime() === date2.getTime()
+  },
+
+  getWeekDates(date: Date): Date[] {
+    const d = this.normalize(date)
+    const day = d.getUTCDay()
+    const diff = d.getUTCDate() - day
+    const week = []
+
+    for (let i = 0; i < 7; i++) {
+      const newDate = new Date(d)
+      newDate.setUTCDate(diff + i)
+      newDate.setUTCHours(12, 0, 0, 0)
+      week.push(newDate)
+    }
+
+    return week
+  },
+}
+
 interface ValidationResult {
   isValid: boolean
   errors: string[]
@@ -106,23 +141,16 @@ const getDayHoursByProject = (entries: TimeEntry[]): ProjectHours[] => {
 // Add new computed properties
 const calendarDates = computed(() => {
   const dates: Date[] = []
-  const start = new Date(currentDate.value)
+  const start = dateUtils.normalize(currentDate.value)
 
   if (calendarView.value === 'week') {
-    start.setDate(start.getDate() - start.getDay())
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(start)
-      date.setDate(date.getDate() + i)
-      date.setUTCHours(12, 0, 0, 0)
-      dates.push(date)
-    }
+    dates.push(...dateUtils.getWeekDates(start))
   } else {
-    start.setDate(1)
+    const monthStart = new Date(start.getFullYear(), start.getMonth(), 1)
     const monthEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0)
-    for (let d = start; d <= monthEnd; d.setDate(d.getDate() + 1)) {
-      const date = new Date(d)
-      date.setUTCHours(12, 0, 0, 0)
-      dates.push(date)
+
+    for (let d = dateUtils.normalize(monthStart); d <= monthEnd; d.setUTCDate(d.getUTCDate() + 1)) {
+      dates.push(new Date(d))
     }
   }
   return dates
@@ -130,21 +158,25 @@ const calendarDates = computed(() => {
 
 const groupedEntries = computed(() => {
   const grouped: { [key: string]: TimeEntry[] } = {}
+
   timeEntries.value.forEach((entry) => {
-    const dateKey = new Date(entry.date).toISOString().split('T')[0]
+    const dateKey = dateUtils.format(entry.date)
     if (!grouped[dateKey]) {
       grouped[dateKey] = []
     }
     grouped[dateKey].push(entry)
   })
+
   return grouped
 })
 
 // Add new methods
 const fetchTimeEntries = async (start: Date, end: Date) => {
   try {
+    const startDate = dateUtils.format(start)
+    const endDate = dateUtils.format(end)
     const response = await fetch(
-      `/api/time-entries/range?startDate=${start.toISOString()}&endDate=${end.toISOString()}`,
+      `/api/time-entries/range?startDate=${startDate}&endDate=${endDate}`,
     )
     timeEntries.value = await response.json()
   } catch (error) {
@@ -153,19 +185,19 @@ const fetchTimeEntries = async (start: Date, end: Date) => {
 }
 
 const navigatePeriod = async (direction: 'prev' | 'next') => {
-  const newDate = new Date(currentDate.value)
+  const newDate = dateUtils.normalize(currentDate.value)
+
   if (calendarView.value === 'week') {
-    newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-    currentDate.value = newDate
-    const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
-    await fetchTimeEntries(calendarDates.value[0], lastDate)
+    newDate.setUTCDate(newDate.getUTCDate() + (direction === 'next' ? 7 : -7))
   } else {
-    newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-    currentDate.value = newDate
-    const monthStart = new Date(newDate.getFullYear(), newDate.getMonth(), 1)
-    const monthEnd = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0)
-    await fetchTimeEntries(monthStart, monthEnd)
+    newDate.setUTCMonth(newDate.getUTCMonth() + (direction === 'next' ? 1 : -1))
   }
+
+  currentDate.value = newDate
+  await fetchTimeEntries(
+    calendarDates.value[0],
+    calendarDates.value[calendarDates.value.length - 1],
+  )
 }
 
 const formatHours = (entries: TimeEntry[]) => {
@@ -187,14 +219,12 @@ const calculateHoursByType = (entries: TimeEntry[]) => {
 }
 
 const monthViewDates = computed(() => {
-  const dates: Date[] = []
-  const start = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth(), 1)
-  const end = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 0)
+  const start = new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth(), 1)
+  const end = new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth() + 1, 0)
 
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const date = new Date(d)
-    date.setUTCHours(12, 0, 0, 0)
-    dates.push(date)
+  const dates: Date[] = []
+  for (let d = dateUtils.normalize(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(new Date(d))
   }
   return dates
 })
@@ -241,8 +271,8 @@ const timeEntryValidation: TimeEntryValidation = {
       const response = await fetch(`/api/projects/${projectId}`)
       const project = await response.json()
 
-      const entryDate = new Date(date)
-      const projectStart = new Date(project.startDate)
+      const entryDate = dateUtils.normalize(date)
+      const projectStart = dateUtils.normalize(project.startDate)
 
       if (entryDate < projectStart) {
         errors.push('Time entry date cannot be before project start date')
@@ -265,8 +295,7 @@ const timeEntryValidation: TimeEntryValidation = {
     const errors: string[] = []
 
     try {
-      // Get existing entries for the date
-      const date = entries[0].date
+      const date = dateUtils.normalize(entries[0].date)
       const { weekNumber, yearNumber } = getWeekNumber(date)
 
       const response = await fetch(
@@ -274,16 +303,16 @@ const timeEntryValidation: TimeEntryValidation = {
       )
       const existingEntries = await response.json()
 
-      // Check for duplicates
       for (const entry of entries) {
         const duplicate = existingEntries.find(
           (e: TimeEntry) =>
-            e.employeeId === entry.employeeId &&
-            new Date(e.date).toISOString().split('T')[0] === entry.date,
+            e.employeeId === entry.employeeId && dateUtils.isSameDay(e.date, entry.date),
         )
 
         if (duplicate) {
-          errors.push(`Duplicate entry found for employee ID ${entry.employeeId} on ${entry.date}`)
+          errors.push(
+            `Duplicate entry found for employee ID ${entry.employeeId} on ${dateUtils.format(entry.date)}`,
+          )
         }
       }
     } catch (error) {
@@ -476,11 +505,12 @@ const timeEntriesWithDetails = ref<TimeEntryWithDetails[]>([])
 // Add to script section:
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  const date = dateUtils.normalize(dateString)
+  return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  })
+  }).format(date)
 }
 
 // Add new methods
@@ -917,7 +947,7 @@ onMounted(() => {
               viewMode === mode ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100',
             ]"
           >
-            {{ mode.charAt(0).toUpperCase() + mode.slice(1) }} View
+            {{ mode.charAt(0).toUpperCase() + mode.slice(1) }}
           </button>
         </div>
         <div v-if="viewMode === 'calendar'" class="flex space-x-4">

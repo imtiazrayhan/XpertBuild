@@ -11,6 +11,12 @@ app.listen(port, () => {
   console.log(`Server running on port ${port}`)
 })
 
+const normalizeDate = (date) => {
+  const d = new Date(date)
+  d.setUTCHours(12, 0, 0, 0)
+  return d
+}
+
 // Get all projects
 app.get('/api/projects', async (req, res) => {
   try {
@@ -572,47 +578,55 @@ app.post('/api/union-payments/bulk', async (req, res) => {
   try {
     const { weekNumber, yearNumber, employeeIds, status } = req.body
 
-    // Get time entries for the week
+    // Validate status transition
+    const validTransitions = {
+      PENDING: ['PROCESSING', 'PAID'],
+      PROCESSING: ['PAID', 'CANCELLED'],
+      PAID: [],
+      CANCELLED: [],
+    }
+
+    // Get and validate time entries
     const timeEntries = await prisma.timeEntry.findMany({
       where: {
         weekNumber: parseInt(weekNumber),
         yearNumber: parseInt(yearNumber),
         employeeId: { in: employeeIds },
-        employee: {
-          employeeType: 'UNION',
-        },
+        employee: { employeeType: 'UNION' },
+        paymentStatus: { in: Object.keys(validTransitions) },
       },
       include: {
         employee: {
           include: {
-            unionClass: {
-              include: {
-                rates: true,
-              },
-            },
+            unionClass: { include: { rates: true } },
           },
         },
       },
     })
 
-    // Group by employee
+    // Group and validate entries
     const groupedEntries = timeEntries.reduce((acc, entry) => {
+      if (!validTransitions[entry.paymentStatus].includes(status)) {
+        throw new Error(`Invalid status transition from ${entry.paymentStatus} to ${status}`)
+      }
+      if (!entry.employee?.unionClass) {
+        throw new Error(`Employee ${entry.employeeId} has no union class`)
+      }
       if (!acc[entry.employeeId]) acc[entry.employeeId] = []
       acc[entry.employeeId].push(entry)
       return acc
     }, {})
 
-    // Process each employee's payments
     const paymentPromises = Object.entries(groupedEntries).map(async ([employeeId, entries]) => {
       const employee = entries[0].employee
       const regularHours = entries.reduce((sum, entry) => sum + entry.regularHours, 0)
       const overtimeHours = entries.reduce((sum, entry) => sum + entry.overtimeHours, 0)
 
-      // Get applicable rate
-      const weekDate = new Date(entries[0].date)
-      const applicableRate = employee.unionClass?.rates.find((rate) => {
-        const effectiveDate = new Date(rate.effectiveDate)
-        const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+      // Find applicable rate with normalized dates
+      const weekDate = normalizeDate(entries[0].date)
+      const applicableRate = employee.unionClass.rates.find((rate) => {
+        const effectiveDate = normalizeDate(rate.effectiveDate)
+        const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
         return weekDate >= effectiveDate && weekDate <= endDate
       })
 
@@ -620,34 +634,43 @@ app.post('/api/union-payments/bulk', async (req, res) => {
         throw new Error(`No applicable rate found for employee ${employeeId}`)
       }
 
-      const regularPay = regularHours * applicableRate.regularRate
-      const overtimePay = overtimeHours * applicableRate.overtimeRate
-      const benefitsPay = (regularHours + overtimeHours) * applicableRate.benefitsRate
-      const totalPay = regularPay + overtimePay + benefitsPay
+      // Calculate payments with precision
+      const regularPay = Number((regularHours * applicableRate.regularRate).toFixed(2))
+      const overtimePay = Number((overtimeHours * applicableRate.overtimeRate).toFixed(2))
+      const benefitsPay = Number(
+        ((regularHours + overtimeHours) * applicableRate.benefitsRate).toFixed(2),
+      )
+      const totalPay = Number((regularPay + overtimePay + benefitsPay).toFixed(2))
 
-      // Update time entries status
-      await prisma.timeEntry.updateMany({
-        where: { id: { in: entries.map((e) => e.id) } },
-        data: { paymentStatus: status },
-      })
+      // Update within transaction
+      const updates = [
+        prisma.timeEntry.updateMany({
+          where: { id: { in: entries.map((e) => e.id) } },
+          data: { paymentStatus: status },
+        }),
+      ]
 
-      // Create payment record if status is PAID
       if (status === 'PAID') {
-        return prisma.payment.create({
-          data: {
-            employeeId: parseInt(employeeId),
-            amount: totalPay,
-            date: new Date(),
-            weekNumber: parseInt(weekNumber),
-            yearNumber: parseInt(yearNumber),
-            status,
-            notes: `Regular: ${regularPay}, OT: ${overtimePay}, Benefits: ${benefitsPay}`,
-          },
-        })
+        updates.push(
+          prisma.payment.create({
+            data: {
+              employeeId: parseInt(employeeId),
+              amount: totalPay,
+              date: normalizeDate(new Date()),
+              weekNumber: parseInt(weekNumber),
+              yearNumber: parseInt(yearNumber),
+              status,
+              notes: `Regular: ${regularPay}, OT: ${overtimePay}, Benefits: ${benefitsPay}`,
+            },
+          }),
+        )
       }
+
+      return updates
     })
 
-    await prisma.$transaction(paymentPromises.filter(Boolean))
+    // Flatten and execute all updates in single transaction
+    await prisma.$transaction(paymentPromises.flat())
     res.json({ message: 'Union payments processed successfully' })
   } catch (error) {
     console.error('Error processing union payments:', error)
