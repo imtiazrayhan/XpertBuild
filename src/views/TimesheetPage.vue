@@ -193,7 +193,7 @@ const navigatePeriod = async (direction: 'prev' | 'next') => {
     newDate.setUTCMonth(newDate.getUTCMonth() + (direction === 'next' ? 1 : -1))
   }
 
-  currentDate.value = newDate
+  currentDate.value = dateUtils.normalize(newDate)
   await fetchTimeEntries(
     calendarDates.value[0],
     calendarDates.value[calendarDates.value.length - 1],
@@ -219,12 +219,15 @@ const calculateHoursByType = (entries: TimeEntry[]) => {
 }
 
 const monthViewDates = computed(() => {
-  const start = new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth(), 1)
-  const end = new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth() + 1, 0)
-
+  const start = dateUtils.normalize(
+    new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth(), 1),
+  )
+  const end = dateUtils.normalize(
+    new Date(currentDate.value.getUTCFullYear(), currentDate.value.getUTCMonth() + 1, 0),
+  )
   const dates: Date[] = []
-  for (let d = dateUtils.normalize(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    dates.push(new Date(d))
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(dateUtils.normalize(d))
   }
   return dates
 })
@@ -833,14 +836,16 @@ const fetchUnionPayments = async () => {
 
         // Find applicable rate based on the week's date
         // Add inside rate finding logic:
-        const weekDate = new Date(entries[0].date)
-        console.log('Looking for rate for date:', weekDate)
+        const weekDate = dateUtils.normalize(entries[0].date)
+        console.log('Looking for rate for date:', dateUtils.normalize(weekDate))
         console.log('Employee union class:', employee.unionClass)
         console.log('Available rates:', employee.unionClass?.rates)
 
         const applicableRate = employee.unionClass?.rates.find((rate) => {
-          const effectiveDate = new Date(rate.effectiveDate)
-          const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+          const effectiveDate = dateUtils.normalize(rate.effectiveDate)
+          const endDate = rate.endDate
+            ? dateUtils.normalize(rate.endDate)
+            : dateUtils.normalize(new Date())
           console.log('Checking rate:', { effectiveDate, endDate })
           return weekDate >= effectiveDate && weekDate <= endDate
         })
