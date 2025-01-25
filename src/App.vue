@@ -17,6 +17,8 @@ const expandedMenus = ref<string[]>([])
 const navItems = [
   { name: 'Dashboard', icon: HomeIcon, route: '/' },
   { name: 'Projects', icon: BriefcaseIcon, route: '/projects' },
+  { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
+  { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
   {
     name: 'Employees',
     icon: UsersIcon,
@@ -25,8 +27,6 @@ const navItems = [
       { name: 'Union Classes', icon: UserGroupIcon, route: '/union-classes' },
     ],
   },
-  { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
-  { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
 ]
 
 const toggleMenu = (menuName: string) => {

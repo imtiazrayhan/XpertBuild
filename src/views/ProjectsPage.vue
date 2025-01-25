@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { EyeIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
 
 interface Project {
   id: string
@@ -234,6 +235,7 @@ onMounted(fetchProjects)
       </div>
     </div>
 
+    <!-- Replace the existing grid div with this table -->
     <div class="bg-white rounded-lg shadow-sm overflow-hidden">
       <table class="min-w-full divide-y divide-gray-200">
         <thead>
@@ -249,7 +251,7 @@ onMounted(fetchProjects)
               Contract Type
             </th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-              General Contractor
+              Contractor
             </th>
             <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
               Contract Value
@@ -292,16 +294,42 @@ onMounted(fetchProjects)
               {{ formatCurrency(project.contractValue) }}
             </td>
             <td class="px-6 py-4">{{ formatDate(project.startDate) }}</td>
-            <td class="px-6 py-4 text-right space-x-3">
-              <button @click="openEditModal(project)" class="text-blue-600 hover:text-blue-800">
-                Edit
-              </button>
-              <button
-                @click="openDeleteConfirmation(project)"
-                class="text-red-600 hover:text-red-800"
-              >
-                Delete
-              </button>
+            <td class="px-6 py-4">
+              <div class="flex items-center justify-end gap-4">
+                <router-link
+                  :to="{ name: 'project-details', params: { id: project.id } }"
+                  class="text-green-600 hover:text-green-800 relative group"
+                >
+                  <EyeIcon class="w-5 h-5" />
+                  <span
+                    class="absolute bottom-full mb-2 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap"
+                  >
+                    View Details
+                  </span>
+                </router-link>
+                <button
+                  @click="openEditModal(project)"
+                  class="text-blue-600 hover:text-blue-800 relative group"
+                >
+                  <PencilIcon class="w-5 h-5" />
+                  <span
+                    class="absolute bottom-full mb-2 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap"
+                  >
+                    Edit Project
+                  </span>
+                </button>
+                <button
+                  @click="openDeleteConfirmation(project)"
+                  class="text-red-600 hover:text-red-800 relative group"
+                >
+                  <TrashIcon class="w-5 h-5" />
+                  <span
+                    class="absolute bottom-full mb-2 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap right-5"
+                  >
+                    Delete Project
+                  </span>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
