@@ -673,7 +673,24 @@ interface WeeklyPayment {
   status: PaymentStatus
 }
 
-const selectedWeek = ref<{ weekNumber: number; yearNumber: number } | null>(null)
+const getLastWeek = () => {
+  const today = new Date()
+  const lastWeek = new Date(today)
+  lastWeek.setDate(today.getDate() - 7)
+  lastWeek.setUTCHours(12, 0, 0, 0)
+
+  // Get week number
+  const yearStart = new Date(lastWeek.getFullYear(), 0, 1)
+  const weekNumber = Math.ceil(((lastWeek.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+
+  return {
+    weekNumber,
+    yearNumber: lastWeek.getFullYear(),
+  }
+}
+
+const selectedWeek = ref(getLastWeek())
+
 const weeklyPayments = ref<WeeklyPayment[]>([])
 const selectedPayments = ref<Set<string>>(new Set()) // employeeId-weekNumber-yearNumber
 
@@ -757,10 +774,13 @@ watch(selectedWeek, () => {
 })
 
 onMounted(() => {
+  fetchUnionClasses()
   fetchEmployees()
   fetchProjects()
   const lastDate = new Date(calendarDates.value[calendarDates.value.length - 1])
   fetchTimeEntries(calendarDates.value[0], lastDate)
+  fetchLocalPayments()
+  fetchUnionPayments()
 })
 
 interface Employee {
@@ -971,11 +991,6 @@ watch([selectedWeek], () => {
   if (selectedWeek.value) {
     fetchUnionPayments()
   }
-})
-
-// Lifecycle
-onMounted(() => {
-  fetchUnionClasses()
 })
 </script>
 
