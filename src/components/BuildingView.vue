@@ -253,11 +253,18 @@ onMounted(async () => {
 <template>
   <div v-if="building" class="space-y-6">
     <!-- Building Header -->
+    <!-- Building Header -->
     <div class="bg-white rounded-lg shadow-sm p-6">
       <div class="flex justify-between items-start">
         <div>
           <h1 class="text-2xl font-bold">{{ building.name }}</h1>
         </div>
+        <router-link
+          :to="{ name: 'project-details', params: { id: building.projectId } }"
+          class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+        >
+          Back to Project
+        </router-link>
       </div>
 
       <!-- Building Metrics -->

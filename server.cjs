@@ -1088,28 +1088,70 @@ app.get('/api/projects/:id/work-items', async (req, res) => {
 // Create elevation with quantities
 app.post('/api/elevations', async (req, res) => {
   try {
-    const elevation = await prisma.elevation.create({
-      data: {
-        name: req.body.name,
-        buildingId: req.body.buildingId,
-        quantities: {
-          create: req.body.quantities.map((q) => ({
-            workItemId: q.workItemId,
-            quantity: q.quantity,
-            completed: 0,
-          })),
-        },
-      },
-      include: {
-        quantities: {
-          include: {
-            workItem: true,
+    const elevation = await prisma.$transaction(async (prisma) => {
+      const newElevation = await prisma.elevation.create({
+        data: {
+          name: req.body.name,
+          buildingId: req.body.buildingId,
+          quantities: {
+            create: req.body.quantities.map((q) => ({
+              workItemId: q.workItemId,
+              quantity: q.quantity,
+              completed: 0,
+            })),
           },
         },
-      },
+        include: {
+          building: true,
+          quantities: {
+            include: { workItem: true },
+          },
+        },
+      })
+
+      const building = await prisma.building.findUnique({
+        where: { id: req.body.buildingId },
+        select: { projectId: true },
+      })
+
+      const buildings = await prisma.building.findMany({
+        where: { projectId: building.projectId },
+        include: {
+          elevations: {
+            include: {
+              quantities: {
+                include: { workItem: true },
+              },
+            },
+          },
+        },
+      })
+
+      const totalValue = buildings.reduce((projectTotal, building) => {
+        return (
+          projectTotal +
+          building.elevations.reduce((buildingTotal, elevation) => {
+            return (
+              buildingTotal +
+              elevation.quantities.reduce((elevationTotal, qty) => {
+                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              }, 0)
+            )
+          }, 0)
+        )
+      }, 0)
+
+      await prisma.project.update({
+        where: { id: building.projectId },
+        data: { contractValue: totalValue },
+      })
+
+      return newElevation
     })
+
     res.json(elevation)
   } catch (error) {
+    console.error('Error creating elevation:', error)
     res.status(500).json({ error: 'Failed to create elevation' })
   }
 })
@@ -1117,43 +1159,138 @@ app.post('/api/elevations', async (req, res) => {
 // Update elevation and quantities
 app.put('/api/elevations/:id', async (req, res) => {
   try {
-    await prisma.workItemQuantity.deleteMany({
-      where: { elevationId: req.params.id },
+    const elevation = await prisma.$transaction(async (prisma) => {
+      // Get building and project info first
+      const currentElevation = await prisma.elevation.findUnique({
+        where: { id: req.params.id },
+        include: { building: true },
+      })
+
+      // Delete existing quantities
+      await prisma.workItemQuantity.deleteMany({
+        where: { elevationId: req.params.id },
+      })
+
+      // Update elevation with new quantities
+      const updatedElevation = await prisma.elevation.update({
+        where: { id: req.params.id },
+        data: {
+          name: req.body.name,
+          quantities: {
+            create: req.body.quantities.map((q) => ({
+              workItemId: q.workItemId,
+              quantity: q.quantity,
+              completed: 0,
+            })),
+          },
+        },
+        include: {
+          building: true,
+          quantities: {
+            include: { workItem: true },
+          },
+        },
+      })
+
+      // Recalculate project value
+      const buildings = await prisma.building.findMany({
+        where: { projectId: currentElevation.building.projectId },
+        include: {
+          elevations: {
+            include: {
+              quantities: {
+                include: { workItem: true },
+              },
+            },
+          },
+        },
+      })
+
+      const totalValue = buildings.reduce((projectTotal, building) => {
+        return (
+          projectTotal +
+          building.elevations.reduce((buildingTotal, elevation) => {
+            return (
+              buildingTotal +
+              elevation.quantities.reduce((elevationTotal, qty) => {
+                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              }, 0)
+            )
+          }, 0)
+        )
+      }, 0)
+
+      await prisma.project.update({
+        where: { id: currentElevation.building.projectId },
+        data: { contractValue: totalValue },
+      })
+
+      return updatedElevation
     })
 
-    const elevation = await prisma.elevation.update({
-      where: { id: req.params.id },
-      data: {
-        name: req.body.name,
-        quantities: {
-          create: req.body.quantities.map((q) => ({
-            workItemId: q.workItemId,
-            quantity: q.quantity,
-            completed: 0,
-          })),
-        },
-      },
-    })
     res.json(elevation)
   } catch (error) {
+    console.error('Error updating elevation:', error)
     res.status(500).json({ error: 'Failed to update elevation' })
   }
 })
 
-// Delete elevation
 app.delete('/api/elevations/:id', async (req, res) => {
   try {
-    await prisma.$transaction([
-      prisma.workItemQuantity.deleteMany({
-        where: { elevationId: req.params.id },
-      }),
-      prisma.elevation.delete({
+    await prisma.$transaction(async (prisma) => {
+      // Get elevation info before deletion
+      const elevation = await prisma.elevation.findUnique({
         where: { id: req.params.id },
-      }),
-    ])
+        include: { building: true },
+      })
+
+      // Delete quantities first
+      await prisma.workItemQuantity.deleteMany({
+        where: { elevationId: req.params.id },
+      })
+
+      // Delete the elevation
+      await prisma.elevation.delete({
+        where: { id: req.params.id },
+      })
+
+      // Recalculate project value
+      const buildings = await prisma.building.findMany({
+        where: { projectId: elevation.building.projectId },
+        include: {
+          elevations: {
+            include: {
+              quantities: {
+                include: { workItem: true },
+              },
+            },
+          },
+        },
+      })
+
+      const totalValue = buildings.reduce((projectTotal, building) => {
+        return (
+          projectTotal +
+          building.elevations.reduce((buildingTotal, elevation) => {
+            return (
+              buildingTotal +
+              elevation.quantities.reduce((elevationTotal, qty) => {
+                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              }, 0)
+            )
+          }, 0)
+        )
+      }, 0)
+
+      await prisma.project.update({
+        where: { id: elevation.building.projectId },
+        data: { contractValue: totalValue },
+      })
+    })
+
     res.json({ message: 'Elevation deleted successfully' })
   } catch (error) {
-    console.error('Delete elevation error:', error)
+    console.error('Error deleting elevation:', error)
     res.status(500).json({ error: 'Failed to delete elevation' })
   }
 })
