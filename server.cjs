@@ -1352,3 +1352,123 @@ app.get('/api/projects/:projectId/expenses', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch project expenses' })
   }
 })
+
+app.get('/api/projects/:projectId/labor', async (req, res) => {
+  const { startDate, endDate } = req.query
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: normalizeDate(new Date(startDate)),
+          lte: normalizeDate(new Date(endDate)),
+        },
+        projectId: req.params.projectId,
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: true,
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(entries)
+  } catch (error) {
+    console.error('Error fetching labor data:', error)
+    res.status(500).json({ error: 'Failed to fetch labor data' })
+  }
+})
+
+// Union classification stats
+app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
+  const { startDate, endDate } = req.query
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+        projectId: req.params.projectId,
+        employee: {
+          employeeType: 'UNION',
+        },
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: true,
+          },
+        },
+      },
+    })
+
+    const stats = {}
+    entries.forEach((entry) => {
+      const classId = entry.employee.unionClassId
+      const className = entry.employee.unionClass?.name || 'Unknown'
+
+      if (!stats[classId]) {
+        stats[classId] = {
+          className,
+          regularHours: 0,
+          overtimeHours: 0,
+          workers: new Set(),
+        }
+      }
+
+      stats[classId].regularHours += entry.regularHours
+      stats[classId].overtimeHours += entry.overtimeHours
+      stats[classId].workers.add(entry.employeeId)
+    })
+
+    const formattedStats = Object.values(stats).map((stat) => ({
+      ...stat,
+      workers: stat.workers.size,
+    }))
+
+    res.json(formattedStats)
+  } catch (error) {
+    console.error('Error fetching union stats:', error)
+    res.status(500).json({ error: 'Failed to fetch union stats' })
+  }
+})
+
+// Active workers count
+app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
+  const { startDate, endDate } = req.query
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+        projectId: req.params.projectId,
+      },
+      select: {
+        employeeId: true,
+        employee: {
+          select: {
+            employeeType: true,
+          },
+        },
+      },
+      distinct: ['employeeId'],
+    })
+
+    const counts = {
+      total: entries.length,
+      local: entries.filter((e) => e.employee.employeeType === 'LOCAL').length,
+      union: entries.filter((e) => e.employee.employeeType === 'UNION').length,
+    }
+
+    res.json(counts)
+  } catch (error) {
+    console.error('Error fetching active workers:', error)
+    res.status(500).json({ error: 'Failed to fetch active workers' })
+  }
+})
