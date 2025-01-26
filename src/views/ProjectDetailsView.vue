@@ -11,6 +11,7 @@ import {
 } from '@heroicons/vue/24/outline'
 import WorkItemsTab from '../components/WorkItemsTab.vue'
 import BuildingTab from '../components/BuildingTab.vue'
+import ExpensesTab from '../components/ExpensesTab.vue'
 
 interface Project {
   id: string
@@ -156,7 +157,7 @@ onMounted(fetchProject)
       <div v-if="activeTab === 'expenses'">
         <!-- Expenses Tab Content -->
         <div class="bg-white rounded-lg shadow">
-          <div class="p-6">Expenses Content</div>
+          <ExpensesTab :project-id="project.id" />
         </div>
       </div>
 

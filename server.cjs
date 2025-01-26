@@ -1329,3 +1329,26 @@ app.post('/api/elevations/:id/complete', async (req, res) => {
     res.status(500).json({ error: error.message })
   }
 })
+
+app.get('/api/projects/:projectId/expenses', async (req, res) => {
+  try {
+    const expenses = await prisma.expense.findMany({
+      where: {
+        projectId: req.params.projectId,
+      },
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(expenses)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch project expenses' })
+  }
+})
