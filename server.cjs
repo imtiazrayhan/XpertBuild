@@ -1143,11 +1143,52 @@ app.put('/api/elevations/:id', async (req, res) => {
 // Delete elevation
 app.delete('/api/elevations/:id', async (req, res) => {
   try {
-    await prisma.elevation.delete({
-      where: { id: req.params.id },
-    })
+    await prisma.$transaction([
+      prisma.workItemQuantity.deleteMany({
+        where: { elevationId: req.params.id },
+      }),
+      prisma.elevation.delete({
+        where: { id: req.params.id },
+      }),
+    ])
     res.json({ message: 'Elevation deleted successfully' })
   } catch (error) {
+    console.error('Delete elevation error:', error)
     res.status(500).json({ error: 'Failed to delete elevation' })
+  }
+})
+
+app.post('/api/elevations/:id/complete', async (req, res) => {
+  try {
+    console.log('Attempting to complete elevation:', req.params.id)
+
+    // First get all quantities for this elevation
+    const quantities = await prisma.workItemQuantity.findMany({
+      where: { elevationId: req.params.id },
+    })
+
+    // Update each quantity individually
+    const updatePromises = quantities.map((qty) =>
+      prisma.workItemQuantity.update({
+        where: { id: qty.id },
+        data: { completed: qty.quantity },
+      }),
+    )
+
+    await prisma.$transaction([
+      ...updatePromises,
+      prisma.elevation.update({
+        where: { id: req.params.id },
+        data: {
+          isCompleted: true,
+          completedAt: new Date(),
+        },
+      }),
+    ])
+
+    res.json({ message: 'Elevation marked complete' })
+  } catch (error) {
+    console.error('Error completing elevation:', error)
+    res.status(500).json({ error: error.message })
   }
 })

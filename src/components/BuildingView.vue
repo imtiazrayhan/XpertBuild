@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, PencilIcon, TrashIcon, CheckCircleIcon } from '@heroicons/vue/24/outline'
 
 interface WorkItem {
   id: string
@@ -24,6 +24,8 @@ interface Elevation {
   id: string
   name: string
   buildingId: string
+  isCompleted: boolean
+  completedAt?: string
   quantities: WorkItemQuantity[]
 }
 
@@ -54,6 +56,9 @@ const getElevationValue = (elevation: Elevation) => {
 }
 
 const getCompletedValue = (elevation: Elevation) => {
+  if (elevation.isCompleted) {
+    return getElevationValue(elevation)
+  }
   return elevation.quantities.reduce((total, qty) => {
     return total + (qty.completed / qty.quantity) * qty.quantity * qty.workItem.unitPrice
   }, 0)
@@ -197,6 +202,46 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+// Add to existing data refs
+const showCompletionModal = ref(false)
+const selectedElevationForCompletion = ref<Elevation | null>(null)
+
+// Add completion methods
+const openCompletionModal = (elevation: Elevation) => {
+  selectedElevationForCompletion.value = elevation
+  showCompletionModal.value = true
+}
+
+const markElevationComplete = async () => {
+  if (!selectedElevationForCompletion.value) return
+
+  try {
+    const response = await fetch(
+      `/api/elevations/${selectedElevationForCompletion.value.id}/complete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    )
+
+    if (response.ok) {
+      showCompletionModal.value = false
+      await fetchBuilding()
+    }
+  } catch (error) {
+    console.error('Error marking elevation complete:', error)
+  }
+}
+
+const formatDate = (dateString: string | undefined) => {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
 onMounted(async () => {
   await fetchBuilding()
   if (building.value) {
@@ -284,8 +329,24 @@ onMounted(async () => {
             <td class="px-6 py-4">
               <div class="flex justify-end space-x-3">
                 <button
+                  v-if="!elevation.isCompleted"
+                  @click="openCompletionModal(elevation)"
+                  class="text-green-600 hover:text-green-800 ml-2 tooltip-trigger"
+                  data-tooltip="Mark Complete"
+                >
+                  <CheckCircleIcon class="w-5 h-5" />
+                </button>
+                <span
+                  v-else
+                  class="text-green-600 ml-2 tooltip-trigger"
+                  :data-tooltip="'Completed on ' + formatDate(elevation.completedAt)"
+                >
+                  <CheckCircleIcon class="w-5 h-5" />
+                </span>
+                <button
                   @click="openElevationModal(elevation)"
-                  class="text-blue-600 hover:text-blue-900"
+                  class="text-blue-600 hover:text-blue-900 tooltip-trigger"
+                  data-tooltip="Edit Elevation"
                 >
                   <PencilIcon class="h-5 w-5" />
                 </button>
@@ -296,7 +357,8 @@ onMounted(async () => {
                       showDeleteConfirmation = true
                     }
                   "
-                  class="text-red-600 hover:text-red-900"
+                  class="text-red-600 hover:text-red-900 tooltip-trigger"
+                  data-tooltip="Delete Elevation"
                 >
                   <TrashIcon class="h-5 w-5" />
                 </button>
@@ -305,6 +367,34 @@ onMounted(async () => {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div
+      v-if="showCompletionModal && selectedElevationForCompletion"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Mark Elevation Complete</h3>
+        <p class="text-gray-500">
+          Are you sure you want to mark {{ selectedElevationForCompletion.name }} as complete? This
+          will lock all quantities and mark the elevation as finished.
+        </p>
+
+        <div class="flex justify-end space-x-3 mt-6">
+          <button
+            @click="showCompletionModal = false"
+            class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            @click="markElevationComplete"
+            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Mark Complete
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Elevation Modal -->
@@ -455,3 +545,24 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style>
+.tooltip-trigger {
+  position: relative;
+}
+
+.tooltip-trigger:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #1f2937;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+</style>
