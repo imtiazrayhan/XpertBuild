@@ -1,7 +1,7 @@
 <!-- BuildingsTab.vue -->
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline'
 
 interface Building {
   id: string
@@ -186,6 +186,12 @@ onMounted(fetchBuildings)
             </td>
             <td class="px-6 py-4 text-right">
               <div class="flex justify-end space-x-3">
+                <router-link
+                  :to="`/buildings/${building.id}`"
+                  class="text-green-600 hover:text-green-900"
+                >
+                  <EyeIcon class="h-5 w-5" />
+                </router-link>
                 <button @click="openEditModal(building)" class="text-blue-600 hover:text-blue-900">
                   <PencilIcon class="h-5 w-5" />
                 </button>

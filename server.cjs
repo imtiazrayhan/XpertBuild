@@ -1014,6 +1014,32 @@ app.post('/api/buildings', async (req, res) => {
   }
 })
 
+// In server.cjs
+app.get('/api/buildings/:id', async (req, res) => {
+  try {
+    console.log('Fetching building:', req.params.id)
+    const building = await prisma.building.findUnique({
+      where: { id: req.params.id },
+      include: {
+        elevations: {
+          include: {
+            quantities: {
+              include: {
+                workItem: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    console.log('Found building:', building)
+    res.json(building)
+  } catch (error) {
+    console.error('Error:', error)
+    res.status(500).json({ error: 'Failed to fetch building' })
+  }
+})
+
 // Update building
 app.put('/api/buildings/:id', async (req, res) => {
   try {
@@ -1038,5 +1064,90 @@ app.delete('/api/buildings/:id', async (req, res) => {
     res.json({ message: 'Building deleted successfully' })
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete building' })
+  }
+})
+
+// Get project work items
+app.get('/api/projects/:id/work-items', async (req, res) => {
+  try {
+    const workItems = await prisma.workItem.findMany({
+      where: {
+        projects: {
+          some: {
+            projectId: req.params.id,
+          },
+        },
+      },
+    })
+    res.json(workItems)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch work items' })
+  }
+})
+
+// Create elevation with quantities
+app.post('/api/elevations', async (req, res) => {
+  try {
+    const elevation = await prisma.elevation.create({
+      data: {
+        name: req.body.name,
+        buildingId: req.body.buildingId,
+        quantities: {
+          create: req.body.quantities.map((q) => ({
+            workItemId: q.workItemId,
+            quantity: q.quantity,
+            completed: 0,
+          })),
+        },
+      },
+      include: {
+        quantities: {
+          include: {
+            workItem: true,
+          },
+        },
+      },
+    })
+    res.json(elevation)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create elevation' })
+  }
+})
+
+// Update elevation and quantities
+app.put('/api/elevations/:id', async (req, res) => {
+  try {
+    await prisma.workItemQuantity.deleteMany({
+      where: { elevationId: req.params.id },
+    })
+
+    const elevation = await prisma.elevation.update({
+      where: { id: req.params.id },
+      data: {
+        name: req.body.name,
+        quantities: {
+          create: req.body.quantities.map((q) => ({
+            workItemId: q.workItemId,
+            quantity: q.quantity,
+            completed: 0,
+          })),
+        },
+      },
+    })
+    res.json(elevation)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update elevation' })
+  }
+})
+
+// Delete elevation
+app.delete('/api/elevations/:id', async (req, res) => {
+  try {
+    await prisma.elevation.delete({
+      where: { id: req.params.id },
+    })
+    res.json({ message: 'Elevation deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete elevation' })
   }
 })
