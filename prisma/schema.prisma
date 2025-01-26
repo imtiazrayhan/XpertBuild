@@ -47,7 +47,7 @@ model Elevation {
 
 model WorkItem {
   id          String        @id @default(uuid())
-  code        String        @unique
+  code        String        // Remove @unique constraint
   description String
   unit        String
   unitPrice   Float

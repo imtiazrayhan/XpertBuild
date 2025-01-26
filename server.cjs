@@ -834,3 +834,143 @@ app.get('/api/union-payments/summary', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch union payments summary' })
   }
 })
+
+// Add to server.cjs
+
+// Get work items for a project
+app.get('/api/projects/:projectId/work-items', async (req, res) => {
+  try {
+    const projectWorkItems = await prisma.projectWorkItem.findMany({
+      where: {
+        projectId: req.params.projectId,
+      },
+      include: {
+        workItem: true,
+      },
+      orderBy: {
+        workItem: {
+          code: 'asc',
+        },
+      },
+    })
+
+    const workItems = projectWorkItems.map((pwi) => ({
+      ...pwi.workItem,
+      unitPrice: pwi.unitPrice, // Use project-specific price
+    }))
+
+    res.json(workItems)
+  } catch (error) {
+    console.error('Error fetching work items:', error)
+    res.status(500).json({ error: 'Failed to fetch work items' })
+  }
+})
+
+// Create work item for a project
+app.post('/api/projects/:projectId/work-items', async (req, res) => {
+  try {
+    // First create the work item
+    const workItem = await prisma.workItem.create({
+      data: {
+        code: req.body.code,
+        description: req.body.description,
+        unit: req.body.unit,
+        unitPrice: parseFloat(req.body.unitPrice),
+        isTemplate: req.body.isTemplate,
+      },
+    })
+
+    // Then create the project association
+    await prisma.projectWorkItem.create({
+      data: {
+        projectId: req.params.projectId,
+        workItemId: workItem.id,
+        unitPrice: parseFloat(req.body.unitPrice),
+      },
+    })
+
+    res.json(workItem)
+  } catch (error) {
+    console.error('Error creating work item:', error)
+    res.status(500).json({ error: 'Failed to create work item: ' + error.message })
+  }
+})
+
+// Update work item
+app.put('/api/projects/:projectId/work-items/:id', async (req, res) => {
+  try {
+    // Update the work item
+    const workItem = await prisma.workItem.update({
+      where: { id: req.params.id },
+      data: {
+        code: req.body.code,
+        description: req.body.description,
+        unit: req.body.unit,
+        unitPrice: parseFloat(req.body.unitPrice),
+        isTemplate: req.body.isTemplate,
+      },
+    })
+
+    // Update the project-specific price
+    await prisma.projectWorkItem.updateMany({
+      where: {
+        projectId: req.params.projectId,
+        workItemId: req.params.id,
+      },
+      data: {
+        unitPrice: parseFloat(req.body.unitPrice),
+      },
+    })
+
+    res.json(workItem)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update work item' })
+  }
+})
+
+// Delete work item from project
+app.delete('/api/projects/:projectId/work-items/:id', async (req, res) => {
+  try {
+    // First remove project association
+    await prisma.projectWorkItem.deleteMany({
+      where: {
+        projectId: req.params.projectId,
+        workItemId: req.params.id,
+      },
+    })
+
+    // Then delete the work item if it's not used in other projects
+    const usageCount = await prisma.projectWorkItem.count({
+      where: {
+        workItemId: req.params.id,
+      },
+    })
+
+    if (usageCount === 0) {
+      await prisma.workItem.delete({
+        where: { id: req.params.id },
+      })
+    }
+
+    res.json({ message: 'Work item removed successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete work item' })
+  }
+})
+
+// Get template work items
+app.get('/api/work-items/templates', async (req, res) => {
+  try {
+    const templates = await prisma.workItem.findMany({
+      where: {
+        isTemplate: true,
+      },
+      orderBy: {
+        code: 'asc',
+      },
+    })
+    res.json(templates)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch template work items' })
+  }
+})
