@@ -974,3 +974,69 @@ app.get('/api/work-items/templates', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch template work items' })
   }
 })
+// Add to server.cjs
+
+// Get buildings for a project
+app.get('/api/buildings', async (req, res) => {
+  try {
+    const buildings = await prisma.building.findMany({
+      where: { projectId: req.query.projectId },
+      include: {
+        elevations: {
+          include: {
+            quantities: {
+              include: {
+                workItem: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    res.json(buildings)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch buildings' })
+  }
+})
+
+// Create building
+app.post('/api/buildings', async (req, res) => {
+  try {
+    const building = await prisma.building.create({
+      data: {
+        name: req.body.name,
+        projectId: req.body.projectId,
+      },
+    })
+    res.json(building)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create building' })
+  }
+})
+
+// Update building
+app.put('/api/buildings/:id', async (req, res) => {
+  try {
+    const building = await prisma.building.update({
+      where: { id: req.params.id },
+      data: {
+        name: req.body.name,
+      },
+    })
+    res.json(building)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update building' })
+  }
+})
+
+// Delete building
+app.delete('/api/buildings/:id', async (req, res) => {
+  try {
+    await prisma.building.delete({
+      where: { id: req.params.id },
+    })
+    res.json({ message: 'Building deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete building' })
+  }
+})

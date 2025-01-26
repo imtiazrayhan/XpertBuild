@@ -10,6 +10,7 @@ import {
   UsersIcon,
 } from '@heroicons/vue/24/outline'
 import WorkItemsTab from '../components/WorkItemsTab.vue'
+import BuildingTab from '../components/BuildingTab.vue'
 
 interface Project {
   id: string
@@ -130,7 +131,7 @@ onMounted(fetchProject)
     </div>
 
     <!-- Tab Content -->
-    <div class="px-8 py-6">
+    <div class="py-6">
       <div v-if="activeTab === 'workItems'">
         <!-- Work Items Tab Content -->
         <div class="bg-white rounded-lg shadow">
@@ -141,7 +142,7 @@ onMounted(fetchProject)
       <div v-if="activeTab === 'buildings'">
         <!-- Buildings Tab Content -->
         <div class="bg-white rounded-lg shadow">
-          <div class="p-6">Buildings Content</div>
+          <BuildingTab :project-id="project.id" />
         </div>
       </div>
 
