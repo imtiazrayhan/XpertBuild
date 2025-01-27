@@ -1612,3 +1612,186 @@ app.get('/api/projects/:projectId/labor/local-stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch local labor stats' })
   }
 })
+
+// Get expense summary by category
+app.get('/api/projects/:id/expenses/summary', async (req, res) => {
+  try {
+    const expenses = await prisma.expense.groupBy({
+      by: ['category'],
+      where: {
+        projectId: req.params.id,
+      },
+      _sum: {
+        amount: true,
+      },
+    })
+
+    // Transform to required format
+    const summary = {
+      material: 0,
+      tools: 0,
+      rentals: 0,
+      operational: 0,
+    }
+
+    expenses.forEach((exp) => {
+      summary[exp.category.toLowerCase()] = exp._sum.amount || 0
+    })
+
+    res.json(summary)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch expense summary' })
+  }
+})
+
+// Get labor cost summary
+app.get('/api/projects/:id/labor/summary', async (req, res) => {
+  try {
+    // Get all time entries for the project
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        projectId: req.params.id,
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: {
+              include: {
+                rates: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const laborCosts = {
+      unionBase: 0,
+      unionBenefits: 0,
+      local: 0,
+    }
+
+    for (const entry of timeEntries) {
+      if (entry.employee.employeeType === 'LOCAL') {
+        const hourlyRate = entry.employee.hourlyRate || 0
+        laborCosts.local += entry.regularHours * hourlyRate
+        laborCosts.local += entry.overtimeHours * (hourlyRate * 1.5)
+      } else {
+        // Find applicable union rate for the entry date
+        const entryDate = new Date(entry.date)
+        const rates = entry.employee.unionClass?.rates || []
+        const applicableRate = rates.find((rate) => {
+          const effectiveDate = new Date(rate.effectiveDate)
+          const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+          return entryDate >= effectiveDate && entryDate <= endDate
+        })
+
+        if (applicableRate) {
+          laborCosts.unionBase += entry.regularHours * applicableRate.regularRate
+          laborCosts.unionBase += entry.overtimeHours * applicableRate.overtimeRate
+          laborCosts.unionBenefits +=
+            (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+        }
+      }
+    }
+
+    // Round to 2 decimal places
+    Object.keys(laborCosts).forEach((key) => {
+      laborCosts[key] = Math.round(laborCosts[key] * 100) / 100
+    })
+
+    res.json(laborCosts)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch labor summary' })
+  }
+})
+
+// Get monthly financial trends
+app.get('/api/projects/:id/financials/monthly', async (req, res) => {
+  try {
+    const projectData = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { startDate: true },
+    })
+
+    const startDate = new Date(projectData.startDate)
+    const endDate = new Date()
+    const months = []
+
+    // Generate array of months
+    for (let d = new Date(startDate); d <= endDate; d.setMonth(d.getMonth() + 1)) {
+      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+
+      const [expenses, timeEntries] = await Promise.all([
+        // Get expenses for month
+        prisma.expense.aggregate({
+          where: {
+            projectId: req.params.id,
+            date: {
+              gte: monthStart,
+              lte: monthEnd,
+            },
+          },
+          _sum: {
+            amount: true,
+          },
+        }),
+
+        // Get time entries for month
+        prisma.timeEntry.findMany({
+          where: {
+            projectId: req.params.id,
+            date: {
+              gte: monthStart,
+              lte: monthEnd,
+            },
+          },
+          include: {
+            employee: {
+              include: {
+                unionClass: {
+                  include: {
+                    rates: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ])
+
+      // Calculate labor cost
+      let laborCost = 0
+      for (const entry of timeEntries) {
+        if (entry.employee.employeeType === 'LOCAL') {
+          const hourlyRate = entry.employee.hourlyRate || 0
+          laborCost += entry.regularHours * hourlyRate
+          laborCost += entry.overtimeHours * (hourlyRate * 1.5)
+        } else {
+          const applicableRate = entry.employee.unionClass?.rates.find((rate) => {
+            const effectiveDate = new Date(rate.effectiveDate)
+            const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+            return entry.date >= effectiveDate && entry.date <= endDate
+          })
+
+          if (applicableRate) {
+            laborCost += entry.regularHours * applicableRate.regularRate
+            laborCost += entry.overtimeHours * applicableRate.overtimeRate
+            laborCost += (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+          }
+        }
+      }
+
+      months.push({
+        month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        expenses: Math.round((expenses._sum.amount || 0) * 100) / 100,
+        labor: Math.round(laborCost * 100) / 100,
+      })
+    }
+
+    res.json(months)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch monthly trends' })
+  }
+})

@@ -13,6 +13,7 @@ import WorkItemsTab from '../components/WorkItemsTab.vue'
 import BuildingTab from '../components/BuildingTab.vue'
 import ExpensesTab from '../components/ExpensesTab.vue'
 import LaborTab from '../components/LaborTab.vue'
+import FinancialTab from '../components/FinancialTab.vue'
 
 interface Project {
   id: string
@@ -151,7 +152,7 @@ onMounted(fetchProject)
       <div v-if="activeTab === 'financial'">
         <!-- Financial Tab Content -->
         <div class="bg-white rounded-lg shadow">
-          <div class="p-6">Financial Content</div>
+          <FinancialTab :project-id="project.id" />
         </div>
       </div>
 
