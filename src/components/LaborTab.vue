@@ -105,9 +105,21 @@ const localLaborStats = ref<LocalLaborSummary>({
 const timeEntries = ref<TimeEntry[]>([])
 const unionStats = ref<UnionStats[]>([])
 const activeWorkers = ref<ActiveWorkers>({ total: 0, local: 0, union: 0 })
-const viewPeriod = ref<'week' | 'month'>('week')
+const viewPeriod = ref<'week' | 'month' | 'total'>('week')
 const selectedWeek = ref(formatWeekString(getLastWeekDate()))
 const selectedMonth = ref(getCurrentMonth())
+const projectStartDate = ref<string>('')
+
+// Function to get project details including start date
+const fetchProjectDetails = async () => {
+  try {
+    const response = await fetch(`/api/projects/${props.projectId}`)
+    const project = await response.json()
+    projectStartDate.value = project.startDate
+  } catch (error) {
+    console.error('Error fetching project details:', error)
+  }
+}
 
 const laborStats = computed(() => {
   const stats = {
@@ -192,7 +204,12 @@ function getDateFromWeek(year: number, week: number): Date {
 }
 
 function getDateRange(): { startDate: Date; endDate: Date } {
-  if (viewPeriod.value === 'week') {
+  if (viewPeriod.value === 'total') {
+    return {
+      startDate: normalizeDate(new Date(projectStartDate.value)),
+      endDate: normalizeDate(new Date()),
+    }
+  } else if (viewPeriod.value === 'week') {
     const [year, week] = selectedWeek.value.split('-W')
     const weekStart = getDateFromWeek(parseInt(year), parseInt(week))
     const weekEnd = new Date(weekStart)
@@ -277,7 +294,19 @@ function getDateFromISOWeek(isoWeekString: string): { startDate: Date; endDate: 
 }
 
 const displayDateRange = computed(() => {
-  if (viewPeriod.value === 'week') {
+  if (viewPeriod.value === 'total') {
+    const start = new Date(projectStartDate.value)
+    const end = new Date()
+    return `${start.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })} - ${end.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })}`
+  } else if (viewPeriod.value === 'week') {
     const { startDate, endDate } = getDateFromISOWeek(selectedWeek.value)
     return `${startDate.toLocaleDateString('en-US', {
       month: 'short',
@@ -341,12 +370,16 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
-watch([() => viewPeriod.value, () => selectedWeek.value, () => selectedMonth.value], () => {
+watch([() => viewPeriod.value, () => selectedWeek.value, () => selectedMonth.value], async () => {
+  if (viewPeriod.value === 'total' && !projectStartDate.value) {
+    await fetchProjectDetails()
+  }
   fetchProjectLabor()
 })
 
 onMounted(() => {
   fetchProjectLabor()
+  fetchProjectDetails()
 })
 </script>
 
@@ -356,7 +389,7 @@ onMounted(() => {
     <div class="flex justify-between items-center">
       <div class="flex space-x-4">
         <button
-          v-for="period in ['week', 'month']"
+          v-for="period in ['week', 'month', 'total']"
           :key="period"
           @click="viewPeriod = period"
           :class="[
@@ -364,23 +397,29 @@ onMounted(() => {
             viewPeriod === period ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100',
           ]"
         >
-          {{ period.charAt(0).toUpperCase() + period.slice(1) }}ly View
+          {{
+            period === 'total'
+              ? 'Total View'
+              : period.charAt(0).toUpperCase() + period.slice(1) + 'ly View'
+          }}
         </button>
       </div>
       <div>
         <span class="text-gray-600 mr-6">{{ displayDateRange }}</span>
-        <input
-          v-if="viewPeriod === 'week'"
-          type="week"
-          v-model="selectedWeek"
-          class="rounded-md border border-gray-300 px-3 py-2"
-        />
-        <input
-          v-else
-          type="month"
-          v-model="selectedMonth"
-          class="rounded-md border border-gray-300 px-3 py-2"
-        />
+        <template v-if="viewPeriod === 'week'">
+          <input
+            type="week"
+            v-model="selectedWeek"
+            class="rounded-md border border-gray-300 px-3 py-2"
+          />
+        </template>
+        <template v-else-if="viewPeriod === 'month'">
+          <input
+            type="month"
+            v-model="selectedMonth"
+            class="rounded-md border border-gray-300 px-3 py-2"
+          />
+        </template>
       </div>
     </div>
 
