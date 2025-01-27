@@ -151,9 +151,6 @@ onMounted(fetchDashboardData)
               {{ projectMetrics.statuses['IN_PROGRESS'] || 0 }}
             </p>
           </div>
-          <div class="p-3 bg-blue-50 rounded-lg">
-            <BriefcaseIcon class="w-6 h-6 text-blue-600" />
-          </div>
         </div>
         <p class="mt-1 text-sm text-gray-600">{{ projectMetrics.total }} total projects</p>
       </div>
@@ -165,9 +162,6 @@ onMounted(fetchDashboardData)
             <p class="mt-1 text-3xl font-semibold text-gray-900">
               {{ formatCurrency(projectMetrics.totalValue) }}
             </p>
-          </div>
-          <div class="p-3 bg-green-50 rounded-lg">
-            <ArrowTrendingUpIcon class="w-6 h-6 text-green-600" />
           </div>
         </div>
         <p class="mt-1 text-sm text-gray-600">Across all active projects</p>
@@ -181,9 +175,6 @@ onMounted(fetchDashboardData)
               {{ laborMetrics.totalHours }}
             </p>
           </div>
-          <div class="p-3 bg-purple-50 rounded-lg">
-            <ClockIcon class="w-6 h-6 text-purple-600" />
-          </div>
         </div>
         <p class="mt-1 text-sm text-gray-600">{{ laborMetrics.overtimeHours }} overtime hours</p>
       </div>
@@ -196,9 +187,6 @@ onMounted(fetchDashboardData)
               {{ totalActiveWorkers }}
             </p>
           </div>
-          <div class="p-3 bg-orange-50 rounded-lg">
-            <UsersIcon class="w-6 h-6 text-orange-600" />
-          </div>
         </div>
         <p class="mt-1 text-sm text-gray-600">
           {{ laborMetrics.localWorkers }} local, {{ laborMetrics.unionWorkers }} union
@@ -209,7 +197,7 @@ onMounted(fetchDashboardData)
     <!-- Project Status Distribution -->
     <div class="grid grid-cols-2 gap-4">
       <div class="bg-white p-6 rounded-lg shadow-sm">
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex justify-between items-center mb-6">
           <h3 class="text-lg font-medium">Projects by Status</h3>
           <router-link to="/projects" class="text-gray-600 hover:text-gray-900">
             <ArrowRightIcon class="w-5 h-5" />
@@ -249,7 +237,7 @@ onMounted(fetchDashboardData)
       </div>
 
       <div class="bg-white p-6 rounded-lg shadow-sm">
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex justify-between items-center mb-6">
           <h3 class="text-lg font-medium">Recent Expenses</h3>
           <router-link to="/expenses" class="text-gray-600 hover:text-gray-900">
             <ArrowRightIcon class="w-5 h-5" />
