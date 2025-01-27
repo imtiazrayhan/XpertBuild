@@ -1795,3 +1795,81 @@ app.get('/api/projects/:id/financials/monthly', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch monthly trends' })
   }
 })
+
+// Current week time entries
+app.get('/api/time-entries/current-week', async (req, res) => {
+  try {
+    const today = new Date()
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay())
+    startOfWeek.setUTCHours(12, 0, 0, 0)
+
+    const endOfWeek = new Date(startOfWeek)
+    endOfWeek.setDate(startOfWeek.getDate() + 6)
+    endOfWeek.setUTCHours(12, 0, 0, 0)
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: startOfWeek,
+          lte: endOfWeek,
+        },
+      },
+      include: {
+        employee: true,
+      },
+    })
+    res.json(entries)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch time entries' })
+  }
+})
+
+// Recent expenses (last 30 days)
+app.get('/api/expenses/recent', async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    thirtyDaysAgo.setUTCHours(12, 0, 0, 0)
+
+    const expenses = await prisma.expense.findMany({
+      where: {
+        date: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(expenses)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch expenses' })
+  }
+})
+
+// Active workers count
+app.get('/api/employees/active', async (req, res) => {
+  try {
+    const today = new Date()
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay())
+    startOfWeek.setUTCHours(12, 0, 0, 0)
+
+    const count = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: startOfWeek,
+        },
+      },
+      select: {
+        employeeId: true,
+      },
+      distinct: ['employeeId'],
+    })
+
+    res.json(count.length)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch active workers' })
+  }
+})

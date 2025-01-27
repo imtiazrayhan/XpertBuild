@@ -187,19 +187,19 @@ onMounted(() => {
 
       <!-- Labor Costs -->
       <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Labor Costs</h3>
+        <h3 class="text-sm font-medium text-gray-500">Total Labor Costs</h3>
         <p class="mt-2 text-2xl font-bold">{{ formatCurrency(totalLaborCost) }}</p>
         <div class="mt-2 space-y-1 text-sm">
           <div class="flex justify-between">
-            <span class="text-gray-500">Union Base:</span>
+            <span class="text-gray-500">Union Base Pay:</span>
             <span>{{ formatCurrency(laborCosts.unionBase) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-gray-500">Union Benefits:</span>
+            <span class="text-gray-500">Union Benefits Pay:</span>
             <span>{{ formatCurrency(laborCosts.unionBenefits) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-gray-500">Local Labor:</span>
+            <span class="text-gray-500">Local Labor Pay:</span>
             <span>{{ formatCurrency(laborCosts.local) }}</span>
           </div>
           <div class="flex justify-between">
