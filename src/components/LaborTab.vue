@@ -220,6 +220,34 @@ const displayDateRange = computed(() => {
   }
 })
 
+const unionClassDistribution = computed(() => {
+  if (!timeEntries.value.length) return []
+
+  const unionEntries = timeEntries.value.filter(
+    (entry) => entry.employee.employeeType === 'UNION' && entry.employee.unionClass,
+  )
+
+  const totalHours = unionEntries.reduce(
+    (sum, entry) => sum + entry.regularHours + entry.overtimeHours,
+    0,
+  )
+
+  const distribution = {}
+  unionEntries.forEach((entry) => {
+    const className = entry.employee.unionClass?.name || 'Unknown'
+    if (!distribution[className]) {
+      distribution[className] = 0
+    }
+    distribution[className] += entry.regularHours + entry.overtimeHours
+  })
+
+  return Object.entries(distribution).map(([className, hours]) => ({
+    className,
+    hours,
+    percentage: totalHours ? ((hours / totalHours) * 100).toFixed(1) : 0,
+  }))
+})
+
 const formatHours = (hours: number) => {
   return hours.toFixed(1)
 }
@@ -310,19 +338,15 @@ onMounted(() => {
       </div>
 
       <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Workforce Split</h3>
+        <h3 class="text-sm font-medium text-gray-500">Union Classification Split</h3>
         <div class="mt-2 space-y-2">
-          <div class="flex justify-between">
-            <span class="text-sm text-gray-500">Local:</span>
-            <span class="font-bold">
-              {{ formatPercentage(activeWorkers.local, activeWorkers.total) }}
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-sm text-gray-500">Union:</span>
-            <span class="font-bold">
-              {{ formatPercentage(activeWorkers.union, activeWorkers.total) }}
-            </span>
+          <div
+            v-for="stat in unionClassDistribution"
+            :key="stat.className"
+            class="flex justify-between"
+          >
+            <span class="text-sm text-gray-500">{{ stat.className }}:</span>
+            <span class="font-medium">{{ stat.percentage }}%</span>
           </div>
         </div>
       </div>
