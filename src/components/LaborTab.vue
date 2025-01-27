@@ -47,13 +47,60 @@ interface UnionStats {
   regularHours: number
   overtimeHours: number
   workers: number
+  regularPay: number
+  overtimePay: number
+  benefitsPay: number
+  totalPay: number
 }
 
 interface ActiveWorkers {
   total: number
-  local: number
-  union: number
+  local: {
+    count: number
+    regularHours: number
+    overtimeHours: number
+    totalPay: number
+  }
+  union: {
+    count: number
+    regularHours: number
+    overtimeHours: number
+    regularPay: number
+    overtimePay: number
+    benefitsPay: number
+    totalPay: number
+  }
 }
+
+interface LocalWorkerStats {
+  employeeId: number
+  name: string
+  hourlyRate: number
+  regularHours: number
+  overtimeHours: number
+  regularPay: number
+  overtimePay: number
+  totalPay: number
+}
+
+interface LocalLaborSummary {
+  totalRegularHours: number
+  totalOvertimeHours: number
+  totalRegularPay: number
+  totalOvertimePay: number
+  totalPay: number
+  workerStats: LocalWorkerStats[]
+}
+
+// Add ref for local labor data
+const localLaborStats = ref<LocalLaborSummary>({
+  totalRegularHours: 0,
+  totalOvertimeHours: 0,
+  totalRegularPay: 0,
+  totalOvertimePay: 0,
+  totalPay: 0,
+  workerStats: [],
+})
 
 const timeEntries = ref<TimeEntry[]>([])
 const unionStats = ref<UnionStats[]>([])
@@ -76,6 +123,29 @@ const laborStats = computed(() => {
   stats.total = stats.regular + stats.overtime
 
   return stats
+})
+
+const paymentSummary = computed(() => {
+  const summary = {
+    totalRegularPay: 0,
+    totalOvertimePay: 0,
+    totalBenefitsPay: 0,
+    totalPay: 0,
+  }
+
+  // Sum up all union stats
+  unionStats.value.forEach((stat) => {
+    summary.totalRegularPay += stat.regularPay
+    summary.totalOvertimePay += stat.overtimePay
+    summary.totalBenefitsPay += stat.benefitsPay
+    summary.totalPay += stat.totalPay
+  })
+
+  // Add local worker pay
+  summary.totalRegularPay += activeWorkers.value.local.totalPay
+  summary.totalPay += activeWorkers.value.local.totalPay
+
+  return summary
 })
 
 function getWeekNumber(d: Date): { year: number; week: number } {
@@ -140,6 +210,8 @@ function getDateRange(): { startDate: Date; endDate: Date } {
   }
 }
 
+// Add to LaborTab.vue fetchProjectLabor function
+
 async function fetchProjectLabor() {
   try {
     const { startDate, endDate } = getDateRange()
@@ -148,7 +220,7 @@ async function fetchProjectLabor() {
     const formattedStartDate = startDate.toISOString().split('T')[0]
     const formattedEndDate = endDate.toISOString().split('T')[0]
 
-    const [entriesRes, statsRes, workersRes] = await Promise.all([
+    const [entriesRes, statsRes, workersRes, localStatsRes] = await Promise.all([
       fetch(
         `/api/projects/${props.projectId}/labor?startDate=${formattedStartDate}&endDate=${formattedEndDate}`,
       ),
@@ -158,11 +230,15 @@ async function fetchProjectLabor() {
       fetch(
         `/api/projects/${props.projectId}/labor/active-workers?startDate=${formattedStartDate}&endDate=${formattedEndDate}`,
       ),
+      fetch(
+        `/api/projects/${props.projectId}/labor/local-stats?startDate=${formattedStartDate}&endDate=${formattedEndDate}`,
+      ),
     ])
 
     timeEntries.value = await entriesRes.json()
     unionStats.value = await statsRes.json()
     activeWorkers.value = await workersRes.json()
+    localLaborStats.value = await localStatsRes.json()
   } catch (error) {
     console.error('Error fetching labor data:', error)
   }
@@ -256,6 +332,15 @@ const formatPercentage = (value: number, total: number) => {
   return total === 0 ? '0%' : `${((value / total) * 100).toFixed(1)}%`
 }
 
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 watch([() => viewPeriod.value, () => selectedWeek.value, () => selectedMonth.value], () => {
   fetchProjectLabor()
 })
@@ -266,8 +351,8 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Period Selection -->
   <div class="space-y-6 p-6">
-    <!-- Period Selection -->
     <div class="flex justify-between items-center">
       <div class="flex space-x-4">
         <button
@@ -299,81 +384,193 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Overview Cards -->
+    <!-- First Row - Worker Stats -->
     <div class="grid grid-cols-4 gap-4">
-      <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Active Workers</h3>
-        <p class="mt-2 text-3xl font-bold">{{ activeWorkers.total }}</p>
-        <div class="mt-2 text-sm">
-          <div class="flex justify-between text-gray-500">
+      <!-- Active Workers -->
+      <div
+        class="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-lg shadow-sm border border-indigo-200"
+      >
+        <h3 class="text-sm font-medium text-indigo-700">Active Workers</h3>
+        <p class="mt-2 text-3xl font-bold text-indigo-900">{{ activeWorkers.total }}</p>
+        <div class="mt-2 space-y-1">
+          <div class="flex justify-between text-indigo-600">
             <span>Local:</span>
-            <span>{{ activeWorkers.local }}</span>
+            <span>{{ activeWorkers.local.count }}</span>
           </div>
-          <div class="flex justify-between text-gray-500">
+          <div class="flex justify-between text-indigo-600">
             <span>Union:</span>
-            <span>{{ activeWorkers.union }}</span>
+            <span>{{ activeWorkers.union.count }}</span>
           </div>
         </div>
       </div>
 
-      <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Total Hours</h3>
-        <p class="mt-2 text-3xl font-bold">
-          {{ formatHours(laborStats.total) }}
+      <!-- Total Local Hours -->
+      <div
+        class="bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 rounded-lg shadow-sm border border-emerald-200"
+      >
+        <h3 class="text-sm font-medium text-emerald-700">Total Local Hours</h3>
+        <p class="mt-2 text-3xl font-bold text-emerald-900">
+          {{ formatHours(activeWorkers.local.regularHours + activeWorkers.local.overtimeHours) }}
         </p>
       </div>
 
-      <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Regular vs Overtime</h3>
-        <div class="mt-2 space-y-2">
-          <div class="flex justify-between">
-            <span class="text-sm text-gray-500">Regular:</span>
-            <span class="font-bold">{{ formatHours(laborStats.regular) }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-sm text-gray-500">Overtime:</span>
-            <span class="font-bold">{{ formatHours(laborStats.overtime) }}</span>
-          </div>
-        </div>
+      <!-- Total Union Hours -->
+      <div
+        class="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg shadow-sm border border-blue-200"
+      >
+        <h3 class="text-sm font-medium text-blue-700">Total Union Hours</h3>
+        <p class="mt-2 text-3xl font-bold text-blue-900">
+          {{ formatHours(activeWorkers.union.regularHours + activeWorkers.union.overtimeHours) }}
+        </p>
       </div>
 
-      <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Union Classification Split</h3>
+      <!-- Regular vs Overtime -->
+      <div
+        class="bg-gradient-to-br from-violet-50 to-violet-100 p-6 rounded-lg shadow-sm border border-violet-200"
+      >
+        <h3 class="text-sm font-medium text-violet-700">Regular vs Overtime</h3>
         <div class="mt-2 space-y-2">
-          <div
-            v-for="stat in unionClassDistribution"
-            :key="stat.className"
-            class="flex justify-between"
-          >
-            <span class="text-sm text-gray-500">{{ stat.className }}:</span>
-            <span class="font-medium">{{ stat.percentage }}%</span>
+          <div class="flex justify-between text-violet-900">
+            <span class="text-sm">Regular:</span>
+            <span class="font-bold">{{ formatHours(laborStats.regular) }}</span>
+          </div>
+          <div class="flex justify-between text-violet-900">
+            <span class="text-sm">Overtime:</span>
+            <span class="font-bold">{{ formatHours(laborStats.overtime) }}</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Union Classification Breakdown -->
-    <div class="bg-white rounded-lg shadow-sm">
-      <div class="px-6 py-4 border-b">
-        <h3 class="text-lg font-medium">Union Classification Distribution</h3>
+    <!-- Second Row - Cost Summary -->
+    <div class="grid grid-cols-4 gap-4">
+      <div
+        class="bg-gradient-to-br from-amber-50 to-amber-100 p-6 rounded-lg shadow-sm border border-amber-200"
+      >
+        <h3 class="text-sm font-medium text-amber-700">Total Labor Cost</h3>
+        <p class="mt-2 text-3xl font-bold text-amber-900">
+          {{ formatCurrency(paymentSummary.totalPay) }}
+        </p>
       </div>
-      <div class="p-6">
-        <div class="grid grid-cols-3 gap-4">
-          <div v-for="stat in unionStats" :key="stat.className" class="bg-gray-50 p-4 rounded-lg">
-            <h4 class="font-medium">{{ stat.className }}</h4>
-            <div class="mt-2 space-y-1">
-              <div class="flex justify-between text-sm">
-                <span class="text-gray-500">Regular:</span>
-                <span class="font-medium">{{ formatHours(stat.regularHours) }}</span>
-              </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-gray-500">Overtime:</span>
-                <span class="font-medium">{{ formatHours(stat.overtimeHours) }}</span>
-              </div>
-              <div class="flex justify-between text-sm">
-                <span class="text-gray-500">Workers:</span>
-                <span class="font-medium">{{ stat.workers }}</span>
-              </div>
+
+      <div
+        class="bg-gradient-to-br from-rose-50 to-rose-100 p-6 rounded-lg shadow-sm border border-rose-200"
+      >
+        <h3 class="text-sm font-medium text-rose-700">Total Union Base Pay</h3>
+        <p class="mt-2 text-3xl font-bold text-rose-900">
+          {{ formatCurrency(activeWorkers.union.regularPay + activeWorkers.union.overtimePay) }}
+        </p>
+      </div>
+
+      <div
+        class="bg-gradient-to-br from-teal-50 to-teal-100 p-6 rounded-lg shadow-sm border border-teal-200"
+      >
+        <h3 class="text-sm font-medium text-teal-700">Total Union Benefits Pay</h3>
+        <p class="mt-2 text-3xl font-bold text-teal-900">
+          {{ formatCurrency(paymentSummary.totalBenefitsPay) }}
+        </p>
+      </div>
+
+      <div
+        class="bg-gradient-to-br from-cyan-50 to-cyan-100 p-6 rounded-lg shadow-sm border border-cyan-200"
+      >
+        <h3 class="text-sm font-medium text-cyan-700">Total Local Pay</h3>
+        <p class="mt-2 text-3xl font-bold text-cyan-900">
+          {{ formatCurrency(activeWorkers.local.totalPay) }}
+        </p>
+      </div>
+    </div>
+
+    <!-- Local Labor Cost Breakdown -->
+    <div class="bg-white rounded-lg shadow-sm p-6">
+      <h2 class="text-lg font-medium mb-4">Local Labor Cost Breakdown</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <!-- Hours Summary -->
+        <div
+          class="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-lg border border-gray-200"
+        >
+          <h3 class="font-medium text-gray-900 mb-4">Hours Summary</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between text-gray-600">
+              <span>Regular Hours:</span>
+              <span class="font-medium">{{ formatHours(localLaborStats.totalRegularHours) }}</span>
+            </div>
+            <div class="flex justify-between text-gray-600">
+              <span>Overtime Hours:</span>
+              <span class="font-medium">{{ formatHours(localLaborStats.totalOvertimeHours) }}</span>
+            </div>
+            <div class="flex justify-between text-gray-900 font-medium">
+              <span>Total Hours:</span>
+              <span>{{
+                formatHours(localLaborStats.totalRegularHours + localLaborStats.totalOvertimeHours)
+              }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pay Cost Summary -->
+        <div
+          class="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-lg border border-gray-200"
+        >
+          <h3 class="font-medium text-gray-900 mb-4">Pay Cost Summary</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between text-gray-600">
+              <span>Regular Pay:</span>
+              <span class="font-medium">{{ formatCurrency(localLaborStats.totalRegularPay) }}</span>
+            </div>
+            <div class="flex justify-between text-gray-600">
+              <span>Overtime Pay:</span>
+              <span class="font-medium">{{
+                formatCurrency(localLaborStats.totalOvertimePay)
+              }}</span>
+            </div>
+            <div class="flex justify-between text-gray-900 font-medium">
+              <span>Total Pay:</span>
+              <span>{{ formatCurrency(localLaborStats.totalPay) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Union Labor Cost Breakdown -->
+    <div class="bg-white rounded-lg shadow-sm p-6">
+      <h2 class="text-lg font-medium mb-4">Union Labor Cost Breakdown</h2>
+      <div class="grid grid-cols-3 gap-4">
+        <div
+          v-for="stat in unionStats"
+          :key="stat.className"
+          class="bg-gradient-to-br from-sky-50 to-sky-100 p-6 rounded-lg border border-sky-200"
+        >
+          <h3 class="font-medium text-sky-900 mb-4">{{ stat.className }}</h3>
+          <div class="space-y-2">
+            <div class="flex justify-between text-sky-700">
+              <span>Workers:</span>
+              <span class="font-medium">{{ stat.workers }}</span>
+            </div>
+            <div class="flex justify-between text-sky-700">
+              <span>Regular Hours:</span>
+              <span class="font-medium">{{ formatHours(stat.regularHours) }}</span>
+            </div>
+            <div class="flex justify-between text-sky-700">
+              <span>Overtime Hours:</span>
+              <span class="font-medium">{{ formatHours(stat.overtimeHours) }}</span>
+            </div>
+            <div class="flex justify-between text-sky-700">
+              <span>Regular Pay:</span>
+              <span class="font-medium">{{ formatCurrency(stat.regularPay) }}</span>
+            </div>
+            <div class="flex justify-between text-sky-700">
+              <span>Overtime Pay:</span>
+              <span class="font-medium">{{ formatCurrency(stat.overtimePay) }}</span>
+            </div>
+            <div class="flex justify-between text-sky-700">
+              <span>Benefits Pay:</span>
+              <span class="font-medium">{{ formatCurrency(stat.benefitsPay) }}</span>
+            </div>
+            <div class="flex justify-between text-sky-900 font-medium pt-2 border-t border-sky-200">
+              <span>Total Pay:</span>
+              <span>{{ formatCurrency(stat.totalPay) }}</span>
             </div>
           </div>
         </div>

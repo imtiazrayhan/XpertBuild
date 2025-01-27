@@ -1382,7 +1382,86 @@ app.get('/api/projects/:projectId/labor', async (req, res) => {
   }
 })
 
-// Union classification stats
+// Modify the active workers endpoint
+app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
+  const { startDate, endDate } = req.query
+  try {
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+        projectId: req.params.projectId,
+      },
+      include: {
+        employee: {
+          include: {
+            unionClass: {
+              include: {
+                rates: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const localEntries = entries.filter((e) => e.employee.employeeType === 'LOCAL')
+    const unionEntries = entries.filter((e) => e.employee.employeeType === 'UNION')
+
+    const localStats = {
+      count: new Set(localEntries.map((e) => e.employeeId)).size,
+      regularHours: localEntries.reduce((sum, e) => sum + e.regularHours, 0),
+      overtimeHours: localEntries.reduce((sum, e) => sum + e.overtimeHours, 0),
+      totalPay: localEntries.reduce((sum, e) => {
+        const hourlyRate = e.employee.hourlyRate || 0
+        return sum + e.regularHours * hourlyRate + e.overtimeHours * hourlyRate * 1.5
+      }, 0),
+    }
+
+    const unionStats = {
+      count: new Set(unionEntries.map((e) => e.employeeId)).size,
+      regularHours: unionEntries.reduce((sum, e) => sum + e.regularHours, 0),
+      overtimeHours: unionEntries.reduce((sum, e) => sum + e.overtimeHours, 0),
+      regularPay: 0,
+      overtimePay: 0,
+      benefitsPay: 0,
+      totalPay: 0,
+    }
+
+    // Calculate union pay with historical rates
+    for (const entry of unionEntries) {
+      const entryDate = normalizeDate(entry.date)
+      const rates = entry.employee.unionClass?.rates || []
+      const applicableRate = rates.find((rate) => {
+        const effectiveDate = normalizeDate(rate.effectiveDate)
+        const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
+        return entryDate >= effectiveDate && entryDate <= endDate
+      })
+
+      if (applicableRate) {
+        unionStats.regularPay += entry.regularHours * applicableRate.regularRate
+        unionStats.overtimePay += entry.overtimeHours * applicableRate.overtimeRate
+        unionStats.benefitsPay +=
+          (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+      }
+    }
+
+    unionStats.totalPay = unionStats.regularPay + unionStats.overtimePay + unionStats.benefitsPay
+
+    res.json({
+      total: localStats.count + unionStats.count,
+      local: localStats,
+      union: unionStats,
+    })
+  } catch (error) {
+    console.error('Error fetching active workers:', error)
+    res.status(500).json({ error: 'Failed to fetch active workers' })
+  }
+})
+
+// Modify the union stats endpoint
 app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
   const { startDate, endDate } = req.query
   try {
@@ -1400,14 +1479,19 @@ app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
       include: {
         employee: {
           include: {
-            unionClass: true,
+            unionClass: {
+              include: {
+                rates: true,
+              },
+            },
           },
         },
       },
     })
 
     const stats = {}
-    entries.forEach((entry) => {
+
+    for (const entry of entries) {
       const classId = entry.employee.unionClassId
       const className = entry.employee.unionClass?.name || 'Unknown'
 
@@ -1417,17 +1501,39 @@ app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
           regularHours: 0,
           overtimeHours: 0,
           workers: new Set(),
+          regularPay: 0,
+          overtimePay: 0,
+          benefitsPay: 0,
+          totalPay: 0,
         }
       }
 
       stats[classId].regularHours += entry.regularHours
       stats[classId].overtimeHours += entry.overtimeHours
       stats[classId].workers.add(entry.employeeId)
-    })
 
+      // Calculate pay using historical rates
+      const entryDate = normalizeDate(entry.date)
+      const rates = entry.employee.unionClass?.rates || []
+      const applicableRate = rates.find((rate) => {
+        const effectiveDate = normalizeDate(rate.effectiveDate)
+        const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
+        return entryDate >= effectiveDate && entryDate <= endDate
+      })
+
+      if (applicableRate) {
+        stats[classId].regularPay += entry.regularHours * applicableRate.regularRate
+        stats[classId].overtimePay += entry.overtimeHours * applicableRate.overtimeRate
+        stats[classId].benefitsPay +=
+          (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+      }
+    }
+
+    // Calculate totals and format for response
     const formattedStats = Object.values(stats).map((stat) => ({
       ...stat,
       workers: stat.workers.size,
+      totalPay: stat.regularPay + stat.overtimePay + stat.benefitsPay,
     }))
 
     res.json(formattedStats)
@@ -1437,8 +1543,8 @@ app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
   }
 })
 
-// Active workers count
-app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
+// Add to server.cjs
+app.get('/api/projects/:projectId/labor/local-stats', async (req, res) => {
   const { startDate, endDate } = req.query
   try {
     const entries = await prisma.timeEntry.findMany({
@@ -1448,27 +1554,61 @@ app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
           lte: new Date(endDate),
         },
         projectId: req.params.projectId,
-      },
-      select: {
-        employeeId: true,
         employee: {
-          select: {
-            employeeType: true,
-          },
+          employeeType: 'LOCAL',
         },
       },
-      distinct: ['employeeId'],
+      include: {
+        employee: true,
+      },
     })
 
-    const counts = {
-      total: entries.length,
-      local: entries.filter((e) => e.employee.employeeType === 'LOCAL').length,
-      union: entries.filter((e) => e.employee.employeeType === 'UNION').length,
+    // Group entries by employee
+    const workerStats = []
+    const workerEntries = {}
+
+    entries.forEach((entry) => {
+      const { employeeId } = entry
+      if (!workerEntries[employeeId]) {
+        workerEntries[employeeId] = []
+      }
+      workerEntries[employeeId].push(entry)
+    })
+
+    // Calculate stats for each worker
+    Object.entries(workerEntries).forEach(([employeeId, entries]) => {
+      const worker = entries[0].employee
+      const hourlyRate = worker.hourlyRate || 0
+      const regularHours = entries.reduce((sum, e) => sum + e.regularHours, 0)
+      const overtimeHours = entries.reduce((sum, e) => sum + e.overtimeHours, 0)
+      const regularPay = regularHours * hourlyRate
+      const overtimePay = overtimeHours * (hourlyRate * 1.5)
+
+      workerStats.push({
+        employeeId: parseInt(employeeId),
+        name: `${worker.firstName} ${worker.lastName}`,
+        hourlyRate,
+        regularHours,
+        overtimeHours,
+        regularPay,
+        overtimePay,
+        totalPay: regularPay + overtimePay,
+      })
+    })
+
+    // Calculate totals
+    const summary = {
+      totalRegularHours: workerStats.reduce((sum, w) => sum + w.regularHours, 0),
+      totalOvertimeHours: workerStats.reduce((sum, w) => sum + w.overtimeHours, 0),
+      totalRegularPay: workerStats.reduce((sum, w) => sum + w.regularPay, 0),
+      totalOvertimePay: workerStats.reduce((sum, w) => sum + w.overtimePay, 0),
+      totalPay: workerStats.reduce((sum, w) => sum + w.totalPay, 0),
+      workerStats,
     }
 
-    res.json(counts)
+    res.json(summary)
   } catch (error) {
-    console.error('Error fetching active workers:', error)
-    res.status(500).json({ error: 'Failed to fetch active workers' })
+    console.error('Error fetching local labor stats:', error)
+    res.status(500).json({ error: 'Failed to fetch local labor stats' })
   }
 })
