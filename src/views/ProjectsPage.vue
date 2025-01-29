@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
-import { EyeIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { EyeIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/vue/24/outline'
 
 interface Project {
   id: string
@@ -9,17 +9,41 @@ interface Project {
   contractValue: number
   client: string
   contractType: 'DIRECT' | 'SUBCONTRACT'
-  generalContractor?: string // New optional field
+  generalContractor?: string
   startDate: string
   status: 'PLANNING' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD'
   address: string
 }
 
+interface Client {
+  id: string
+  name: string
+  code: string
+}
+
 const projects = ref<Project[]>([])
+const clients = ref<Client[]>([])
 const searchQuery = ref('')
 const selectedClient = ref('')
 const selectedStatus = ref('')
 const showNewProjectModal = ref(false)
+const showClientModal = ref(false)
+const showEditProjectModal = ref(false)
+const showDeleteConfirmation = ref(false)
+const selectedProject = ref<Project | null>(null)
+const statuses = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD']
+
+const editProject = ref<Project>({
+  id: '',
+  name: '',
+  contractValue: 0,
+  client: '',
+  contractType: 'DIRECT',
+  generalContractor: '',
+  startDate: '',
+  status: 'PLANNING',
+  address: '',
+})
 
 const newProject = ref({
   name: '',
@@ -32,8 +56,10 @@ const newProject = ref({
   address: '',
 })
 
-const clients = ['NYCHA', 'SCA']
-const statuses = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD']
+const newClient = ref({
+  name: '',
+  code: '',
+})
 
 const fetchProjects = async () => {
   try {
@@ -96,6 +122,42 @@ const filteredProjects = computed(() => {
   })
 })
 
+const fetchClients = async () => {
+  try {
+    const response = await fetch('/api/clients?active=true')
+    clients.value = await response.json()
+  } catch (error) {
+    console.error('Error fetching clients:', error)
+  }
+}
+
+const createClient = async () => {
+  try {
+    const response = await fetch('/api/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newClient.value),
+    })
+
+    if (response.ok) {
+      const client = await response.json()
+      clients.value.push(client)
+      newProject.value.client = client.id
+      showClientModal.value = false
+      resetClientForm()
+    }
+  } catch (error) {
+    console.error('Error creating client:', error)
+  }
+}
+
+const resetClientForm = () => {
+  newClient.value = {
+    name: '',
+    code: '',
+  }
+}
+
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -106,21 +168,6 @@ const formatCurrency = (value: number) => {
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('en-US')
 }
-
-const showEditProjectModal = ref(false)
-const showDeleteConfirmation = ref(false)
-const selectedProject = ref<Project | null>(null)
-const editProject = ref<Project>({
-  id: '',
-  name: '',
-  contractValue: 0,
-  client: '',
-  contractType: 'DIRECT',
-  generalContractor: '',
-  startDate: '',
-  status: 'PLANNING',
-  address: '',
-})
 
 const openEditModal = (project: Project) => {
   editProject.value = { ...project }
@@ -172,7 +219,10 @@ const deleteProject = async () => {
   }
 }
 
-onMounted(fetchProjects)
+onMounted(() => {
+  fetchProjects()
+  fetchClients()
+})
 </script>
 
 <template>
@@ -283,7 +333,7 @@ onMounted(fetchProjects)
               </span>
             </td>
             <td class="px-6 py-4">{{ project.address }}</td>
-            <td class="px-6 py-4">{{ project.client }}</td>
+            <td class="px-6 py-4">{{ project.client?.code }}</td>
             <td class="px-6 py-4">
               {{ project.contractType === 'DIRECT' ? 'Direct' : 'Subcontract' }}
             </td>
@@ -370,18 +420,30 @@ onMounted(fetchProjects)
                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
               />
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Client</label>
-              <select
-                v-model="editProject.client"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              >
-                <option value="">Select Client</option>
-                <option v-for="client in clients" :key="client" :value="client">
-                  {{ client }}
-                </option>
-              </select>
+            <div class="flex space-x-2">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700">Client</label>
+                <select
+                  v-model="newProject.client"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">Select Client</option>
+                  <option v-for="client in clients" :key="client.id" :value="client.id">
+                    {{ client.name }} ({{ client.code }})
+                  </option>
+                </select>
+              </div>
+              <div class="flex items-end">
+                <button
+                  type="button"
+                  @click="showClientModal = true"
+                  class="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 flex items-center"
+                >
+                  <PlusIcon class="w-5 h-5 mr-1" />
+                  New Client
+                </button>
+              </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">Contract Type</label>
@@ -515,18 +577,30 @@ onMounted(fetchProjects)
                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
               />
             </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Client</label>
-              <select
-                v-model="newProject.client"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              >
-                <option value="">Select Client</option>
-                <option v-for="client in clients" :key="client" :value="client">
-                  {{ client }}
-                </option>
-              </select>
+            <div class="flex space-x-2">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700">Client</label>
+                <select
+                  v-model="newProject.client"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">Select Client</option>
+                  <option v-for="client in clients" :key="client.id" :value="client.id">
+                    {{ client.name }} ({{ client.code }})
+                  </option>
+                </select>
+              </div>
+              <div class="flex items-end">
+                <button
+                  type="button"
+                  @click="showClientModal = true"
+                  class="px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 flex items-center"
+                >
+                  <PlusIcon class="w-5 h-5 mr-1" />
+                  New Client
+                </button>
+              </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">Contract Type</label>
@@ -595,6 +669,59 @@ onMounted(fetchProjects)
               class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Create Project
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Quick Client Creation Modal -->
+    <div
+      v-if="showClientModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-lg font-medium">New Client</h3>
+          <button @click="showClientModal = false" class="text-gray-500 hover:text-gray-700">
+            <XMarkIcon class="w-6 h-6" />
+          </button>
+        </div>
+
+        <form @submit.prevent="createClient" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Client Name</label>
+            <input
+              v-model="newClient.name"
+              type="text"
+              required
+              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Client Code</label>
+            <input
+              v-model="newClient.code"
+              type="text"
+              required
+              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+            />
+          </div>
+
+          <div class="flex justify-end space-x-3">
+            <button
+              type="button"
+              @click="showClientModal = false"
+              class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Create Client
             </button>
           </div>
         </form>

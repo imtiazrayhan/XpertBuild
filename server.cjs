@@ -21,6 +21,14 @@ const normalizeDate = (date) => {
 app.get('/api/projects', async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
+      include: {
+        client: {
+          select: {
+            name: true,
+            code: true,
+          },
+        },
+      },
       orderBy: { startDate: 'desc' },
     })
     res.json(projects)
@@ -1870,9 +1878,15 @@ app.get('/api/employees/active', async (req, res) => {
 })
 
 // Get all clients
+// In server.cjs
 app.get('/api/clients', async (req, res) => {
   try {
+    // If active parameter is provided, filter by it
+    // If not provided, return all clients (for ClientsPage)
+    const where = req.query.active === 'true' ? { active: true } : {}
+
     const clients = await prisma.client.findMany({
+      where,
       orderBy: { name: 'asc' },
     })
     res.json(clients)

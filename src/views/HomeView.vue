@@ -278,7 +278,7 @@ onMounted(fetchDashboardData)
         >
           <div>
             <div class="font-medium">{{ project.name }}</div>
-            <div class="text-sm text-gray-600">{{ project.client }}</div>
+            <div class="text-sm text-gray-600">Client: {{ project.client.code }}</div>
           </div>
           <div class="text-right">
             <div class="font-medium">{{ formatCurrency(project.contractValue) }}</div>
