@@ -11,18 +11,34 @@ model Project {
   id            String    @id @default(uuid())
   name          String
   contractValue Float
-  client        String
   contractType  ContractType
   generalContractor String?
   startDate     DateTime
   status        ProjectStatus
   address       String
+  client        Client   @relation(fields: [clientId], references: [id])
+  clientId      String
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   scopes      Scope[]
   workItems     ProjectWorkItem[]
   expenses      Expense[]
   timeEntries TimeEntry[]
+}
+
+model Client {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  code          String    @unique   
+  description   String?
+  address       String?
+  contactName   String?
+  contactEmail  String?
+  contactPhone  String? 
+  active        Boolean   @default(true)
+  projects      Project[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Scope {

@@ -1868,3 +1868,97 @@ app.get('/api/employees/active', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch active workers' })
   }
 })
+
+// Get all clients
+app.get('/api/clients', async (req, res) => {
+  try {
+    const clients = await prisma.client.findMany({
+      orderBy: { name: 'asc' },
+    })
+    res.json(clients)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch clients' })
+  }
+})
+
+// Create client
+app.post('/api/clients', async (req, res) => {
+  try {
+    const client = await prisma.client.create({
+      data: {
+        name: req.body.name,
+        code: req.body.code,
+        description: req.body.description,
+        address: req.body.address,
+        contactName: req.body.contactName,
+        contactEmail: req.body.contactEmail,
+        contactPhone: req.body.contactPhone,
+        active: true,
+      },
+    })
+    res.json(client)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create client' })
+  }
+})
+
+// Update client
+app.put('/api/clients/:id', async (req, res) => {
+  try {
+    const client = await prisma.client.update({
+      where: { id: req.params.id },
+      data: {
+        name: req.body.name,
+        code: req.body.code,
+        description: req.body.description,
+        address: req.body.address,
+        contactName: req.body.contactName,
+        contactEmail: req.body.contactEmail,
+        contactPhone: req.body.contactPhone,
+        active: req.body.active,
+      },
+    })
+    res.json(client)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update client' })
+  }
+})
+
+// Delete/deactivate client
+app.delete('/api/clients/:id', async (req, res) => {
+  try {
+    // Soft delete by setting active to false
+    const client = await prisma.client.update({
+      where: { id: req.params.id },
+      data: { active: false },
+    })
+    res.json({ message: 'Client deactivated successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to deactivate client' })
+  }
+})
+
+// Get single client
+app.get('/api/clients/:id', async (req, res) => {
+  try {
+    const client = await prisma.client.findUnique({
+      where: { id: req.params.id },
+      include: {
+        projects: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            contractValue: true,
+          },
+        },
+      },
+    })
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' })
+    }
+    res.json(client)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch client' })
+  }
+})

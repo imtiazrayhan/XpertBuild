@@ -9,7 +9,9 @@ import {
   Squares2X2Icon,
   UserGroupIcon,
   ChevronDownIcon,
+  InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
+import { icons, User } from 'lucide-react'
 
 const currentPage = ref('dashboard')
 const expandedMenus = ref<string[]>([])
@@ -27,6 +29,7 @@ const navItems = [
       { name: 'Union Classes', icon: UserGroupIcon, route: '/union-classes' },
     ],
   },
+  { name: 'Clients', icon: InformationCircleIcon, route: '/clients' },
 ]
 
 const toggleMenu = (menuName: string) => {
