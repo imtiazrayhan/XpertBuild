@@ -82,21 +82,21 @@ app.delete('/api/projects/:id', async (req, res) => {
     await prisma.$transaction([
       prisma.workItemQuantity.deleteMany({
         where: {
-          elevation: {
-            building: {
+          subScope: {
+            scope: {
               projectId: req.params.id,
             },
           },
         },
       }),
-      prisma.elevation.deleteMany({
+      prisma.subScope.deleteMany({
         where: {
-          building: {
+          scope: {
             projectId: req.params.id,
           },
         },
       }),
-      prisma.building.deleteMany({
+      prisma.scope.deleteMany({
         where: { projectId: req.params.id },
       }),
       prisma.projectWorkItem.deleteMany({
@@ -976,13 +976,13 @@ app.get('/api/work-items/templates', async (req, res) => {
 })
 // Add to server.cjs
 
-// Get buildings for a project
-app.get('/api/buildings', async (req, res) => {
+// Replace scope endpoints with scope endpoints
+app.get('/api/scopes', async (req, res) => {
   try {
-    const buildings = await prisma.building.findMany({
+    const scopes = await prisma.scope.findMany({
       where: { projectId: req.query.projectId },
       include: {
-        elevations: {
+        subScopes: {
           include: {
             quantities: {
               include: {
@@ -993,35 +993,32 @@ app.get('/api/buildings', async (req, res) => {
         },
       },
     })
-    res.json(buildings)
+    res.json(scopes)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch buildings' })
+    res.status(500).json({ error: 'Failed to fetch scopes' })
   }
 })
 
-// Create building
-app.post('/api/buildings', async (req, res) => {
+app.post('/api/scopes', async (req, res) => {
   try {
-    const building = await prisma.building.create({
+    const scope = await prisma.scope.create({
       data: {
         name: req.body.name,
         projectId: req.body.projectId,
       },
     })
-    res.json(building)
+    res.json(scope)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create building' })
+    res.status(500).json({ error: 'Failed to create scope' })
   }
 })
 
-// In server.cjs
-app.get('/api/buildings/:id', async (req, res) => {
+app.get('/api/scopes/:id', async (req, res) => {
   try {
-    console.log('Fetching building:', req.params.id)
-    const building = await prisma.building.findUnique({
+    const scope = await prisma.scope.findUnique({
       where: { id: req.params.id },
       include: {
-        elevations: {
+        subScopes: {
           include: {
             quantities: {
               include: {
@@ -1032,38 +1029,36 @@ app.get('/api/buildings/:id', async (req, res) => {
         },
       },
     })
-    console.log('Found building:', building)
-    res.json(building)
+    res.json(scope)
   } catch (error) {
-    console.error('Error:', error)
-    res.status(500).json({ error: 'Failed to fetch building' })
+    res.status(500).json({ error: 'Failed to fetch scope' })
   }
 })
 
-// Update building
-app.put('/api/buildings/:id', async (req, res) => {
+// Update scope
+app.put('/api/scopes/:id', async (req, res) => {
   try {
-    const building = await prisma.building.update({
+    const scope = await prisma.scope.update({
       where: { id: req.params.id },
       data: {
         name: req.body.name,
       },
     })
-    res.json(building)
+    res.json(scope)
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update building' })
+    res.status(500).json({ error: 'Failed to update scope' })
   }
 })
 
-// Delete building
-app.delete('/api/buildings/:id', async (req, res) => {
+// Delete scope
+app.delete('/api/scopes/:id', async (req, res) => {
   try {
-    await prisma.building.delete({
+    await prisma.scope.delete({
       where: { id: req.params.id },
     })
-    res.json({ message: 'Building deleted successfully' })
+    res.json({ message: 'scope deleted successfully' })
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete building' })
+    res.status(500).json({ error: 'Failed to delete scope' })
   }
 })
 
@@ -1085,14 +1080,14 @@ app.get('/api/projects/:id/work-items', async (req, res) => {
   }
 })
 
-// Create elevation with quantities
-app.post('/api/elevations', async (req, res) => {
+// Create subScope with quantities
+app.post('/api/sub-scopes', async (req, res) => {
   try {
-    const elevation = await prisma.$transaction(async (prisma) => {
-      const newElevation = await prisma.elevation.create({
+    const subScope = await prisma.$transaction(async (prisma) => {
+      const newsubScope = await prisma.subScope.create({
         data: {
           name: req.body.name,
-          buildingId: req.body.buildingId,
+          scopeId: req.body.scopeId,
           quantities: {
             create: req.body.quantities.map((q) => ({
               workItemId: q.workItemId,
@@ -1102,22 +1097,22 @@ app.post('/api/elevations', async (req, res) => {
           },
         },
         include: {
-          building: true,
+          scope: true,
           quantities: {
             include: { workItem: true },
           },
         },
       })
 
-      const building = await prisma.building.findUnique({
-        where: { id: req.body.buildingId },
+      const scope = await prisma.scope.findUnique({
+        where: { id: req.body.scopeId },
         select: { projectId: true },
       })
 
-      const buildings = await prisma.building.findMany({
-        where: { projectId: building.projectId },
+      const scopes = await prisma.scope.findMany({
+        where: { projectId: scope.projectId },
         include: {
-          elevations: {
+          subScopes: {
             include: {
               quantities: {
                 include: { workItem: true },
@@ -1127,14 +1122,14 @@ app.post('/api/elevations', async (req, res) => {
         },
       })
 
-      const totalValue = buildings.reduce((projectTotal, building) => {
+      const totalValue = scopes.reduce((projectTotal, scope) => {
         return (
           projectTotal +
-          building.elevations.reduce((buildingTotal, elevation) => {
+          scope.subScopes.reduce((scopeTotal, subScope) => {
             return (
-              buildingTotal +
-              elevation.quantities.reduce((elevationTotal, qty) => {
-                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              scopeTotal +
+              subScope.quantities.reduce((subScopeTotal, qty) => {
+                return subScopeTotal + qty.quantity * qty.workItem.unitPrice
               }, 0)
             )
           }, 0)
@@ -1142,37 +1137,37 @@ app.post('/api/elevations', async (req, res) => {
       }, 0)
 
       await prisma.project.update({
-        where: { id: building.projectId },
+        where: { id: scope.projectId },
         data: { contractValue: totalValue },
       })
 
-      return newElevation
+      return newsubScope
     })
 
-    res.json(elevation)
+    res.json(subScope)
   } catch (error) {
-    console.error('Error creating elevation:', error)
-    res.status(500).json({ error: 'Failed to create elevation' })
+    console.error('Error creating subScope:', error)
+    res.status(500).json({ error: 'Failed to create subScope' })
   }
 })
 
-// Update elevation and quantities
-app.put('/api/elevations/:id', async (req, res) => {
+// Update subScope and quantities
+app.put('/api/sub-scopes/:id', async (req, res) => {
   try {
-    const elevation = await prisma.$transaction(async (prisma) => {
-      // Get building and project info first
-      const currentElevation = await prisma.elevation.findUnique({
+    const subScope = await prisma.$transaction(async (prisma) => {
+      // Get scope and project info first
+      const currentsubScope = await prisma.subScope.findUnique({
         where: { id: req.params.id },
-        include: { building: true },
+        include: { scope: true },
       })
 
       // Delete existing quantities
       await prisma.workItemQuantity.deleteMany({
-        where: { elevationId: req.params.id },
+        where: { subScopeId: req.params.id },
       })
 
-      // Update elevation with new quantities
-      const updatedElevation = await prisma.elevation.update({
+      // Update subScope with new quantities
+      const updatedsubScope = await prisma.subScope.update({
         where: { id: req.params.id },
         data: {
           name: req.body.name,
@@ -1185,7 +1180,7 @@ app.put('/api/elevations/:id', async (req, res) => {
           },
         },
         include: {
-          building: true,
+          scope: true,
           quantities: {
             include: { workItem: true },
           },
@@ -1193,10 +1188,10 @@ app.put('/api/elevations/:id', async (req, res) => {
       })
 
       // Recalculate project value
-      const buildings = await prisma.building.findMany({
-        where: { projectId: currentElevation.building.projectId },
+      const scopes = await prisma.scope.findMany({
+        where: { projectId: currentsubScope.scope.projectId },
         include: {
-          elevations: {
+          subScopes: {
             include: {
               quantities: {
                 include: { workItem: true },
@@ -1206,14 +1201,14 @@ app.put('/api/elevations/:id', async (req, res) => {
         },
       })
 
-      const totalValue = buildings.reduce((projectTotal, building) => {
+      const totalValue = scopes.reduce((projectTotal, scope) => {
         return (
           projectTotal +
-          building.elevations.reduce((buildingTotal, elevation) => {
+          scope.subScopes.reduce((scopeTotal, subScope) => {
             return (
-              buildingTotal +
-              elevation.quantities.reduce((elevationTotal, qty) => {
-                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              scopeTotal +
+              subScope.quantities.reduce((subScopeTotal, qty) => {
+                return subScopeTotal + qty.quantity * qty.workItem.unitPrice
               }, 0)
             )
           }, 0)
@@ -1221,44 +1216,44 @@ app.put('/api/elevations/:id', async (req, res) => {
       }, 0)
 
       await prisma.project.update({
-        where: { id: currentElevation.building.projectId },
+        where: { id: currentsubScope.scope.projectId },
         data: { contractValue: totalValue },
       })
 
-      return updatedElevation
+      return updatedsubScope
     })
 
-    res.json(elevation)
+    res.json(subScope)
   } catch (error) {
-    console.error('Error updating elevation:', error)
-    res.status(500).json({ error: 'Failed to update elevation' })
+    console.error('Error updating subScope:', error)
+    res.status(500).json({ error: 'Failed to update subScope' })
   }
 })
 
-app.delete('/api/elevations/:id', async (req, res) => {
+app.delete('/api/sub-scopes/:id', async (req, res) => {
   try {
     await prisma.$transaction(async (prisma) => {
-      // Get elevation info before deletion
-      const elevation = await prisma.elevation.findUnique({
+      // Get subScope info before deletion
+      const subScope = await prisma.subScope.findUnique({
         where: { id: req.params.id },
-        include: { building: true },
+        include: { scope: true },
       })
 
       // Delete quantities first
       await prisma.workItemQuantity.deleteMany({
-        where: { elevationId: req.params.id },
+        where: { subScopeId: req.params.id },
       })
 
-      // Delete the elevation
-      await prisma.elevation.delete({
+      // Delete the subScope
+      await prisma.subScope.delete({
         where: { id: req.params.id },
       })
 
       // Recalculate project value
-      const buildings = await prisma.building.findMany({
-        where: { projectId: elevation.building.projectId },
+      const scopes = await prisma.scope.findMany({
+        where: { projectId: subScope.scope.projectId },
         include: {
-          elevations: {
+          subScopes: {
             include: {
               quantities: {
                 include: { workItem: true },
@@ -1268,14 +1263,14 @@ app.delete('/api/elevations/:id', async (req, res) => {
         },
       })
 
-      const totalValue = buildings.reduce((projectTotal, building) => {
+      const totalValue = scopes.reduce((projectTotal, scope) => {
         return (
           projectTotal +
-          building.elevations.reduce((buildingTotal, elevation) => {
+          scope.subScopes.reduce((scopeTotal, subScope) => {
             return (
-              buildingTotal +
-              elevation.quantities.reduce((elevationTotal, qty) => {
-                return elevationTotal + qty.quantity * qty.workItem.unitPrice
+              scopeTotal +
+              subScope.quantities.reduce((subScopeTotal, qty) => {
+                return subScopeTotal + qty.quantity * qty.workItem.unitPrice
               }, 0)
             )
           }, 0)
@@ -1283,25 +1278,25 @@ app.delete('/api/elevations/:id', async (req, res) => {
       }, 0)
 
       await prisma.project.update({
-        where: { id: elevation.building.projectId },
+        where: { id: subScope.scope.projectId },
         data: { contractValue: totalValue },
       })
     })
 
-    res.json({ message: 'Elevation deleted successfully' })
+    res.json({ message: 'subScope deleted successfully' })
   } catch (error) {
-    console.error('Error deleting elevation:', error)
-    res.status(500).json({ error: 'Failed to delete elevation' })
+    console.error('Error deleting subScope:', error)
+    res.status(500).json({ error: 'Failed to delete subScope' })
   }
 })
 
-app.post('/api/elevations/:id/complete', async (req, res) => {
+app.post('/api/sub-scopes/:id/complete', async (req, res) => {
   try {
-    console.log('Attempting to complete elevation:', req.params.id)
+    console.log('Attempting to complete subScope:', req.params.id)
 
-    // First get all quantities for this elevation
+    // First get all quantities for this subScope
     const quantities = await prisma.workItemQuantity.findMany({
-      where: { elevationId: req.params.id },
+      where: { subScopeId: req.params.id },
     })
 
     // Update each quantity individually
@@ -1314,7 +1309,7 @@ app.post('/api/elevations/:id/complete', async (req, res) => {
 
     await prisma.$transaction([
       ...updatePromises,
-      prisma.elevation.update({
+      prisma.subScope.update({
         where: { id: req.params.id },
         data: {
           isCompleted: true,
@@ -1323,9 +1318,9 @@ app.post('/api/elevations/:id/complete', async (req, res) => {
       }),
     ])
 
-    res.json({ message: 'Elevation marked complete' })
+    res.json({ message: 'subScope marked complete' })
   } catch (error) {
-    console.error('Error completing elevation:', error)
+    console.error('Error completing subScope:', error)
     res.status(500).json({ error: error.message })
   }
 })

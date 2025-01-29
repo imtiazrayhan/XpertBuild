@@ -1,4 +1,4 @@
-<!-- BuildingView.vue -->
+<!-- ScopeView.vue -->
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
@@ -20,161 +20,161 @@ interface WorkItemQuantity {
   workItem: WorkItem
 }
 
-interface Elevation {
+interface SubScope {
   id: string
   name: string
-  buildingId: string
+  scopeId: string
   isCompleted: boolean
   completedAt?: string
   quantities: WorkItemQuantity[]
 }
 
-interface Building {
+interface Scope {
   id: string
   name: string
   projectId: string
-  elevations: Elevation[]
+  subScopes: SubScope[]
 }
 
 const route = useRoute()
-const building = ref<Building | null>(null)
-const showElevationModal = ref(false)
+const scope = ref<Scope | null>(null)
+const showSubScopeModal = ref(false)
 const isEditing = ref(false)
-const selectedElevation = ref<Elevation | null>(null)
+const selectedSubScope = ref<SubScope | null>(null)
 const showDeleteConfirmation = ref(false)
 const projectWorkItems = ref<WorkItem[]>([])
 
-const newElevation = ref({
+const newSubScope = ref({
   name: '',
   quantities: [] as { workItemId: string; quantity: number }[],
 })
 
-const getElevationValue = (elevation: Elevation) => {
-  return elevation.quantities.reduce((total, qty) => {
+const getSubScopeValue = (subScope: SubScope) => {
+  return subScope.quantities.reduce((total, qty) => {
     return total + qty.quantity * qty.workItem.unitPrice
   }, 0)
 }
 
-const getCompletedValue = (elevation: Elevation) => {
-  if (elevation.isCompleted) {
-    return getElevationValue(elevation)
+const getCompletedValue = (subScope: SubScope) => {
+  if (subScope.isCompleted) {
+    return getSubScopeValue(subScope)
   }
-  return elevation.quantities.reduce((total, qty) => {
+  return subScope.quantities.reduce((total, qty) => {
     return total + (qty.completed / qty.quantity) * qty.quantity * qty.workItem.unitPrice
   }, 0)
 }
 
-const buildingValue = computed(() => {
-  if (!building.value) return 0
-  return building.value.elevations.reduce((total, elevation) => {
-    return total + getElevationValue(elevation)
+const scopeValue = computed(() => {
+  if (!scope.value) return 0
+  return scope.value.subScopes.reduce((total, subScope) => {
+    return total + getSubScopeValue(subScope)
   }, 0)
 })
 
-const buildingCompletedValue = computed(() => {
-  if (!building.value) return 0
-  return building.value.elevations.reduce((total, elevation) => {
-    return total + getCompletedValue(elevation)
+const scopeCompletedValue = computed(() => {
+  if (!scope.value) return 0
+  return scope.value.subScopes.reduce((total, subScope) => {
+    return total + getCompletedValue(subScope)
   }, 0)
 })
 
-const fetchBuilding = async () => {
+const fetchScope = async () => {
   try {
-    const response = await fetch(`/api/buildings/${route.params.id}`)
-    building.value = await response.json()
+    const response = await fetch(`/api/scopes/${route.params.id}`)
+    scope.value = await response.json()
   } catch (error) {
-    console.error('Error fetching building:', error)
+    console.error('Error fetching scope:', error)
   }
 }
 
 const fetchProjectWorkItems = async () => {
-  if (!building.value) return
+  if (!scope.value) return
   try {
-    const response = await fetch(`/api/projects/${building.value.projectId}/work-items`)
+    const response = await fetch(`/api/projects/${scope.value.projectId}/work-items`)
     projectWorkItems.value = await response.json()
   } catch (error) {
     console.error('Error fetching work items:', error)
   }
 }
 
-const createElevation = async () => {
-  if (!building.value) return
+const createSubScope = async () => {
+  if (!scope.value) return
 
   try {
-    const response = await fetch('/api/elevations', {
+    const response = await fetch('/api/sub-scopes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: newElevation.value.name,
-        buildingId: building.value.id,
-        quantities: newElevation.value.quantities,
+        name: newSubScope.value.name,
+        scopeId: scope.value.id,
+        quantities: newSubScope.value.quantities,
       }),
     })
 
     if (response.ok) {
-      showElevationModal.value = false
-      await fetchBuilding()
+      showSubScopeModal.value = false
+      await fetchScope()
       resetForm()
     }
   } catch (error) {
-    console.error('Error creating elevation:', error)
+    console.error('Error creating subScope:', error)
   }
 }
 
-const updateElevation = async () => {
-  if (!selectedElevation.value) return
+const updateSubScope = async () => {
+  if (!selectedSubScope.value) return
 
   try {
-    const response = await fetch(`/api/elevations/${selectedElevation.value.id}`, {
+    const response = await fetch(`/api/sub-scopes/${selectedSubScope.value.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: newElevation.value.name,
-        quantities: newElevation.value.quantities,
+        name: newSubScope.value.name,
+        quantities: newSubScope.value.quantities,
       }),
     })
 
     if (response.ok) {
-      showElevationModal.value = false
-      await fetchBuilding()
+      showSubScopeModal.value = false
+      await fetchScope()
       resetForm()
     }
   } catch (error) {
-    console.error('Error updating elevation:', error)
+    console.error('Error updating subScope:', error)
   }
 }
 
-const deleteElevation = async () => {
-  if (!selectedElevation.value) return
+const deleteSubScope = async () => {
+  if (!selectedSubScope.value) return
 
   try {
-    const response = await fetch(`/api/elevations/${selectedElevation.value.id}`, {
+    const response = await fetch(`/api/sub-scopes/${selectedSubScope.value.id}`, {
       method: 'DELETE',
     })
 
     if (response.ok) {
       showDeleteConfirmation.value = false
-      await fetchBuilding()
-      selectedElevation.value = null
+      await fetchScope()
+      selectedSubScope.value = null
     }
   } catch (error) {
-    console.error('Error deleting elevation:', error)
+    console.error('Error deleting subScope:', error)
   }
 }
 
-const openElevationModal = (elevation?: Elevation) => {
-  if (elevation) {
-    selectedElevation.value = elevation
-    newElevation.value = {
-      name: elevation.name,
-      quantities: elevation.quantities.map((q) => ({
+const openSubScopeModal = (subScope?: SubScope) => {
+  if (subScope) {
+    selectedSubScope.value = subScope
+    newSubScope.value = {
+      name: subScope.name,
+      quantities: subScope.quantities.map((q) => ({
         workItemId: q.workItemId,
         quantity: q.quantity,
       })),
     }
     isEditing.value = true
   } else {
-    newElevation.value = {
+    newSubScope.value = {
       name: '',
       quantities: projectWorkItems.value.map((item) => ({
         workItemId: item.id,
@@ -183,16 +183,16 @@ const openElevationModal = (elevation?: Elevation) => {
     }
     isEditing.value = false
   }
-  showElevationModal.value = true
+  showSubScopeModal.value = true
 }
 
 const resetForm = () => {
-  newElevation.value = {
+  newSubScope.value = {
     name: '',
     quantities: [],
   }
   isEditing.value = false
-  selectedElevation.value = null
+  selectedSubScope.value = null
 }
 
 const formatCurrency = (value: number) => {
@@ -204,20 +204,20 @@ const formatCurrency = (value: number) => {
 
 // Add to existing data refs
 const showCompletionModal = ref(false)
-const selectedElevationForCompletion = ref<Elevation | null>(null)
+const selectedSubScopeForCompletion = ref<SubScope | null>(null)
 
 // Add completion methods
-const openCompletionModal = (elevation: Elevation) => {
-  selectedElevationForCompletion.value = elevation
+const openCompletionModal = (subScope: SubScope) => {
+  selectedSubScopeForCompletion.value = subScope
   showCompletionModal.value = true
 }
 
-const markElevationComplete = async () => {
-  if (!selectedElevationForCompletion.value) return
+const markSubScopeComplete = async () => {
+  if (!selectedSubScopeForCompletion.value) return
 
   try {
     const response = await fetch(
-      `/api/elevations/${selectedElevationForCompletion.value.id}/complete`,
+      `/api/sub-scopes/${selectedSubScopeForCompletion.value.id}/complete`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -226,10 +226,10 @@ const markElevationComplete = async () => {
 
     if (response.ok) {
       showCompletionModal.value = false
-      await fetchBuilding()
+      await fetchScope()
     }
   } catch (error) {
-    console.error('Error marking elevation complete:', error)
+    console.error('Error marking subScope complete:', error)
   }
 }
 
@@ -243,56 +243,56 @@ const formatDate = (dateString: string | undefined) => {
 }
 
 onMounted(async () => {
-  await fetchBuilding()
-  if (building.value) {
+  await fetchScope()
+  if (scope.value) {
     await fetchProjectWorkItems()
   }
 })
 </script>
 
 <template>
-  <div v-if="building" class="space-y-6">
-    <!-- Building Header -->
-    <!-- Building Header -->
+  <div v-if="scope" class="space-y-6">
+    <!-- Scope Header -->
+    <!-- Scope Header -->
     <div class="bg-white rounded-lg shadow-sm p-6">
       <div class="flex justify-between items-start">
         <div>
-          <h1 class="text-2xl font-bold">{{ building.name }}</h1>
+          <h1 class="text-2xl font-bold">{{ scope.name }}</h1>
         </div>
         <router-link
-          :to="{ name: 'project-details', params: { id: building.projectId } }"
+          :to="{ name: 'project-details', params: { id: scope.projectId } }"
           class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
         >
           Back to Project
         </router-link>
       </div>
 
-      <!-- Building Metrics -->
+      <!-- Scope Metrics -->
       <div class="mt-6 grid grid-cols-2 gap-4">
         <div class="bg-white p-4 rounded-lg border border-gray-200">
           <h3 class="text-sm font-medium text-gray-500">Total Value</h3>
-          <p class="mt-1 text-xl font-semibold">{{ formatCurrency(buildingValue) }}</p>
+          <p class="mt-1 text-xl font-semibold">{{ formatCurrency(scopeValue) }}</p>
         </div>
         <div class="bg-white p-4 rounded-lg border border-gray-200">
           <h3 class="text-sm font-medium text-gray-500">Completed Value</h3>
-          <p class="mt-1 text-xl font-semibold">{{ formatCurrency(buildingCompletedValue) }}</p>
+          <p class="mt-1 text-xl font-semibold">{{ formatCurrency(scopeCompletedValue) }}</p>
         </div>
       </div>
     </div>
 
-    <!-- Elevations Section -->
+    <!-- SubScopes Section -->
     <div class="bg-white rounded-lg shadow-sm">
       <div class="p-6 flex justify-between items-center">
-        <h2 class="text-lg font-medium">Elevations</h2>
+        <h2 class="text-lg font-medium">SubScopes</h2>
         <button
-          @click="openElevationModal()"
+          @click="openSubScopeModal()"
           class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
-          + Add Elevation
+          + Add SubScope
         </button>
       </div>
 
-      <!-- Elevations Table -->
+      <!-- SubScopes Table -->
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
@@ -310,11 +310,11 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          <tr v-for="elevation in building.elevations" :key="elevation.id">
-            <td class="px-6 py-4 font-medium text-gray-900">{{ elevation.name }}</td>
-            <td class="px-6 py-4 text-right">{{ formatCurrency(getElevationValue(elevation)) }}</td>
+          <tr v-for="subScope in scope.subScopes" :key="subScope.id">
+            <td class="px-6 py-4 font-medium text-gray-900">{{ subScope.name }}</td>
+            <td class="px-6 py-4 text-right">{{ formatCurrency(getSubScopeValue(subScope)) }}</td>
             <td class="px-6 py-4 text-right">
-              {{ formatCurrency(getCompletedValue(elevation)) }}
+              {{ formatCurrency(getCompletedValue(subScope)) }}
             </td>
             <td class="px-6 py-4">
               <div class="flex items-center justify-end">
@@ -322,13 +322,13 @@ onMounted(async () => {
                   <div
                     class="bg-blue-600 h-2.5 rounded-full"
                     :style="{
-                      width: `${(getCompletedValue(elevation) / getElevationValue(elevation)) * 100}%`,
+                      width: `${(getCompletedValue(subScope) / getSubScopeValue(subScope)) * 100}%`,
                     }"
                   ></div>
                 </div>
                 <span class="text-sm text-gray-500">
                   {{
-                    Math.round((getCompletedValue(elevation) / getElevationValue(elevation)) * 100)
+                    Math.round((getCompletedValue(subScope) / getSubScopeValue(subScope)) * 100)
                   }}%
                 </span>
               </div>
@@ -336,8 +336,8 @@ onMounted(async () => {
             <td class="px-6 py-4">
               <div class="flex justify-end space-x-3">
                 <button
-                  v-if="!elevation.isCompleted"
-                  @click="openCompletionModal(elevation)"
+                  v-if="!subScope.isCompleted"
+                  @click="openCompletionModal(subScope)"
                   class="text-green-600 hover:text-green-800 ml-2 tooltip-trigger"
                   data-tooltip="Mark Complete"
                 >
@@ -346,26 +346,26 @@ onMounted(async () => {
                 <span
                   v-else
                   class="text-green-600 ml-2 tooltip-trigger"
-                  :data-tooltip="'Completed on ' + formatDate(elevation.completedAt)"
+                  :data-tooltip="'Completed on ' + formatDate(subScope.completedAt)"
                 >
                   <CheckCircleIcon class="w-5 h-5" />
                 </span>
                 <button
-                  @click="openElevationModal(elevation)"
+                  @click="openSubScopeModal(subScope)"
                   class="text-blue-600 hover:text-blue-900 tooltip-trigger"
-                  data-tooltip="Edit Elevation"
+                  data-tooltip="Edit SubScope"
                 >
                   <PencilIcon class="h-5 w-5" />
                 </button>
                 <button
                   @click="
                     () => {
-                      selectedElevation = elevation
+                      selectedSubScope = subScope
                       showDeleteConfirmation = true
                     }
                   "
                   class="text-red-600 hover:text-red-900 tooltip-trigger"
-                  data-tooltip="Delete Elevation"
+                  data-tooltip="Delete SubScope"
                 >
                   <TrashIcon class="h-5 w-5" />
                 </button>
@@ -377,14 +377,14 @@ onMounted(async () => {
     </div>
 
     <div
-      v-if="showCompletionModal && selectedElevationForCompletion"
+      v-if="showCompletionModal && selectedSubScopeForCompletion"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
     >
       <div class="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Mark Elevation Complete</h3>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Mark SubScope Complete</h3>
         <p class="text-gray-500">
-          Are you sure you want to mark {{ selectedElevationForCompletion.name }} as complete? This
-          will lock all quantities and mark the elevation as finished.
+          Are you sure you want to mark {{ selectedSubScopeForCompletion.name }} as complete? This
+          will lock all quantities and mark the subScope as finished.
         </p>
 
         <div class="flex justify-end space-x-3 mt-6">
@@ -395,7 +395,7 @@ onMounted(async () => {
             Cancel
           </button>
           <button
-            @click="markElevationComplete"
+            @click="markSubScopeComplete"
             class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Mark Complete
@@ -404,26 +404,26 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Elevation Modal -->
+    <!-- SubScope Modal -->
     <div
-      v-if="showElevationModal"
+      v-if="showSubScopeModal"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
     >
       <div class="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h3 class="text-lg font-medium text-gray-900">
-            {{ isEditing ? 'Edit' : 'New' }} Elevation
+            {{ isEditing ? 'Edit' : 'New' }} SubScope
           </h3>
-          <button @click="showElevationModal = false" class="text-gray-400 hover:text-gray-500">
+          <button @click="showSubScopeModal = false" class="text-gray-400 hover:text-gray-500">
             <XMarkIcon class="h-6 w-6" />
           </button>
         </div>
 
-        <form @submit.prevent="isEditing ? updateElevation() : createElevation()" class="space-y-4">
+        <form @submit.prevent="isEditing ? updateSubScope() : createSubScope()" class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700">Name</label>
             <input
-              v-model="newElevation.name"
+              v-model="newSubScope.name"
               type="text"
               required
               class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
@@ -466,7 +466,7 @@ onMounted(async () => {
                   <td class="px-4 py-2">
                     <input
                       v-model.number="
-                        newElevation.quantities.find((q) => q.workItemId === workItem.id)!.quantity
+                        newSubScope.quantities.find((q) => q.workItemId === workItem.id)!.quantity
                       "
                       type="number"
                       min="0"
@@ -478,7 +478,7 @@ onMounted(async () => {
                     {{
                       formatCurrency(
                         workItem.unitPrice *
-                          newElevation.quantities.find((q) => q.workItemId === workItem.id)!
+                          newSubScope.quantities.find((q) => q.workItemId === workItem.id)!
                             .quantity,
                       )
                     }}
@@ -491,7 +491,7 @@ onMounted(async () => {
                   <td class="px-4 py-2 text-right font-medium">
                     {{
                       formatCurrency(
-                        newElevation.quantities.reduce((total, qty) => {
+                        newSubScope.quantities.reduce((total, qty) => {
                           const workItem = projectWorkItems.find((w) => w.id === qty.workItemId)
                           return total + (workItem ? workItem.unitPrice * qty.quantity : 0)
                         }, 0),
@@ -506,7 +506,7 @@ onMounted(async () => {
           <div class="flex justify-end space-x-3 mt-6">
             <button
               type="button"
-              @click="showElevationModal = false"
+              @click="showSubScopeModal = false"
               class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
             >
               Cancel
@@ -515,7 +515,7 @@ onMounted(async () => {
               type="submit"
               class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              {{ isEditing ? 'Save Changes' : 'Create Elevation' }}
+              {{ isEditing ? 'Save Changes' : 'Create SubScope' }}
             </button>
           </div>
         </form>
@@ -528,9 +528,9 @@ onMounted(async () => {
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
     >
       <div class="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Delete Elevation</h3>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Delete SubScope</h3>
         <p class="text-gray-500">
-          Are you sure you want to delete {{ selectedElevation?.name }}? This action cannot be
+          Are you sure you want to delete {{ selectedSubScope?.name }}? This action cannot be
           undone.
         </p>
 
@@ -542,7 +542,7 @@ onMounted(async () => {
             Cancel
           </button>
           <button
-            @click="deleteElevation"
+            @click="deleteSubScope"
             class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
           >
             Delete

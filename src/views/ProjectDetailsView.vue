@@ -10,7 +10,7 @@ import {
   UsersIcon,
 } from '@heroicons/vue/24/outline'
 import WorkItemsTab from '../components/WorkItemsTab.vue'
-import BuildingTab from '../components/BuildingTab.vue'
+import ScopeTab from '../components/ScopeTab.vue'
 import ExpensesTab from '../components/ExpensesTab.vue'
 import LaborTab from '../components/LaborTab.vue'
 import FinancialTab from '../components/FinancialTab.vue'
@@ -36,7 +36,7 @@ const activeTab = ref('financial')
 const tabs = [
   { id: 'financial', name: 'Financial', icon: CurrencyDollarIcon },
   { id: 'workItems', name: 'Work Items', icon: ClipboardDocumentListIcon },
-  { id: 'buildings', name: 'Buildings', icon: BuildingOffice2Icon },
+  { id: 'scopes', name: 'Scopes', icon: BuildingOffice2Icon },
   { id: 'expenses', name: 'Expenses', icon: BanknotesIcon },
   { id: 'labor', name: 'Labor', icon: UsersIcon },
 ]
@@ -142,10 +142,10 @@ onMounted(fetchProject)
         </div>
       </div>
 
-      <div v-if="activeTab === 'buildings'">
-        <!-- Buildings Tab Content -->
+      <div v-if="activeTab === 'scopes'">
+        <!-- Scopes Tab Content -->
         <div class="bg-white rounded-lg shadow">
-          <BuildingTab :project-id="project.id" />
+          <ScopeTab :project-id="project.id" />
         </div>
       </div>
 

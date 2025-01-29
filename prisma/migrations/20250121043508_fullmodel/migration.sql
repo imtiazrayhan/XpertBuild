@@ -33,25 +33,25 @@ CREATE TABLE "Project" (
 );
 
 -- CreateTable
-CREATE TABLE "Building" (
+CREATE TABLE "Scope" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "Building_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Scope_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "Elevation" (
+CREATE TABLE "SubScope" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "buildingId" TEXT NOT NULL,
+    "scopeId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "Elevation_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "SubScope_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -83,7 +83,7 @@ CREATE TABLE "ProjectWorkItem" (
 -- CreateTable
 CREATE TABLE "WorkItemQuantity" (
     "id" TEXT NOT NULL,
-    "elevationId" TEXT NOT NULL,
+    "subScopeId" TEXT NOT NULL,
     "workItemId" TEXT NOT NULL,
     "quantity" DOUBLE PRECISION NOT NULL,
     "completed" DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -172,10 +172,10 @@ CREATE UNIQUE INDEX "WorkItem_code_key" ON "WorkItem"("code");
 CREATE INDEX "UnionClassRate_unionClassId_effectiveDate_idx" ON "UnionClassRate"("unionClassId", "effectiveDate");
 
 -- AddForeignKey
-ALTER TABLE "Building" ADD CONSTRAINT "Building_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Scope" ADD CONSTRAINT "Scope_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Elevation" ADD CONSTRAINT "Elevation_buildingId_fkey" FOREIGN KEY ("buildingId") REFERENCES "Building"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "SubScope" ADD CONSTRAINT "SubScope_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "Scope"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ProjectWorkItem" ADD CONSTRAINT "ProjectWorkItem_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -184,7 +184,7 @@ ALTER TABLE "ProjectWorkItem" ADD CONSTRAINT "ProjectWorkItem_projectId_fkey" FO
 ALTER TABLE "ProjectWorkItem" ADD CONSTRAINT "ProjectWorkItem_workItemId_fkey" FOREIGN KEY ("workItemId") REFERENCES "WorkItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "WorkItemQuantity" ADD CONSTRAINT "WorkItemQuantity_elevationId_fkey" FOREIGN KEY ("elevationId") REFERENCES "Elevation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "WorkItemQuantity" ADD CONSTRAINT "WorkItemQuantity_subScopeId_fkey" FOREIGN KEY ("subScopeId") REFERENCES "SubScope"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "WorkItemQuantity" ADD CONSTRAINT "WorkItemQuantity_workItemId_fkey" FOREIGN KEY ("workItemId") REFERENCES "WorkItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

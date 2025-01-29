@@ -6,7 +6,7 @@ import EmployeesPage from '../views/EmployeesPage.vue'
 import UnionClassesPage from '../views/UnionClassesPage.vue'
 import TimesheetPage from '../views/TimesheetPage.vue'
 import ProjectDetailsView from '../views/ProjectDetailsView.vue'
-import BuildingView from '../components/BuildingView.vue'
+import ScopeView from '../components/ScopeView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -27,9 +27,9 @@ const router = createRouter({
       component: ProjectDetailsView,
     },
     {
-      path: '/buildings/:id',
-      name: 'building-view',
-      component: BuildingView,
+      path: '/scopes/:id',
+      name: 'scope-view',
+      component: ScopeView,
     },
     {
       path: '/expenses',
