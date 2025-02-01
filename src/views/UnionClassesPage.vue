@@ -3,6 +3,13 @@
 import { ref, onMounted } from 'vue'
 import { XMarkIcon, PencilIcon } from '@heroicons/vue/24/outline'
 
+// Date utility function
+const normalizeDate = (date: Date | string): Date => {
+  const d = new Date(date)
+  d.setUTCHours(12, 0, 0, 0)
+  return d
+}
+
 interface UnionClassRate {
   id: number
   regularRate: number
@@ -33,7 +40,7 @@ const newRate = ref({
   regularRate: 0,
   overtimeRate: 0,
   benefitsRate: 0,
-  effectiveDate: '',
+  effectiveDate: normalizeDate(new Date()).toISOString().split('T')[0],
   endDate: '',
 })
 
@@ -68,10 +75,16 @@ const addRate = async () => {
   if (!selectedClass.value) return
 
   try {
+    const rateData = {
+      ...newRate.value,
+      effectiveDate: normalizeDate(newRate.value.effectiveDate),
+      endDate: newRate.value.endDate ? normalizeDate(newRate.value.endDate) : null,
+    }
+
     const response = await fetch(`/api/union-classes/${selectedClass.value.id}/rates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newRate.value),
+      body: JSON.stringify(rateData),
     })
 
     if (response.ok) {
@@ -89,7 +102,7 @@ const resetRateForm = () => {
     regularRate: 0,
     overtimeRate: 0,
     benefitsRate: 0,
-    effectiveDate: '',
+    effectiveDate: normalizeDate(new Date()).toISOString().split('T')[0],
     endDate: '',
   }
   selectedClass.value = null
@@ -103,7 +116,7 @@ const formatCurrency = (value: number) => {
 }
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US')
+  return normalizeDate(dateString).toLocaleDateString('en-US')
 }
 
 onMounted(fetchUnionClasses)
