@@ -253,40 +253,57 @@ app.post('/api/union-classes/:id/rates', async (req, res) => {
 
   try {
     await prisma.$transaction(async (prisma) => {
-      // If no end date provided and there's an active rate, set its end date
-      if (!baseRate.endDate) {
-        await prisma.unionClassBaseRate.updateMany({
-          where: {
-            unionClassId: parseInt(req.params.id),
-            endDate: null,
-          },
+      // Handle base rate
+      if (baseRate) {
+        // End date any current active base rate
+        if (!baseRate.endDate) {
+          await prisma.unionClassBaseRate.updateMany({
+            where: {
+              unionClassId: parseInt(req.params.id),
+              endDate: null,
+            },
+            data: {
+              endDate: new Date(baseRate.effectiveDate),
+            },
+          })
+        }
+
+        // Create new base rate
+        await prisma.unionClassBaseRate.create({
           data: {
-            endDate: new Date(baseRate.effectiveDate),
+            unionClassId: parseInt(req.params.id),
+            regularRate: parseFloat(baseRate.regularRate),
+            overtimeRate: parseFloat(baseRate.overtimeRate),
+            benefitsRate: parseFloat(baseRate.benefitsRate),
+            effectiveDate: new Date(baseRate.effectiveDate),
+            endDate: baseRate.endDate ? new Date(baseRate.endDate) : null,
           },
         })
       }
 
-      // Create base rate
-      await prisma.unionClassBaseRate.create({
-        data: {
-          unionClassId: parseInt(req.params.id),
-          regularRate: parseFloat(baseRate.regularRate),
-          overtimeRate: parseFloat(baseRate.overtimeRate),
-          benefitsRate: parseFloat(baseRate.benefitsRate),
-          effectiveDate: new Date(baseRate.effectiveDate),
-          endDate: baseRate.endDate ? new Date(baseRate.endDate) : null,
-        },
-      })
+      // Handle custom rates
+      if (customRates && customRates.length > 0) {
+        // End date any current active custom rates
+        if (!baseRate?.endDate) {
+          await prisma.unionClassCustomRate.updateMany({
+            where: {
+              unionClassId: parseInt(req.params.id),
+              endDate: null,
+            },
+            data: {
+              endDate: new Date(baseRate.effectiveDate),
+            },
+          })
+        }
 
-      // Create custom rates
-      if (customRates.length > 0) {
+        // Create new custom rates
         await Promise.all(
           customRates.map((rate) =>
             prisma.unionClassCustomRate.create({
               data: {
                 unionClassId: parseInt(req.params.id),
                 name: rate.name,
-                description: rate.description,
+                description: rate.description || null,
                 rate: parseFloat(rate.rate),
                 effectiveDate: new Date(baseRate.effectiveDate),
                 endDate: baseRate.endDate ? new Date(baseRate.endDate) : null,
@@ -384,7 +401,6 @@ app.delete('/api/employees/:id', async (req, res) => {
 })
 
 // Add to server.cjs
-
 // Bulk create time entries
 app.post('/api/time-entries/bulk', async (req, res) => {
   try {
@@ -403,10 +419,10 @@ app.post('/api/time-entries/bulk', async (req, res) => {
       return prisma.timeEntry.create({
         data: {
           employeeId: entry.employeeId,
-          projectId: entry.projectId,
+          projectId: entry.projectId || null,
           date,
-          regularHours: entry.regularHours,
-          overtimeHours: entry.overtimeHours,
+          regularHours: entry.regularHours || 0,
+          overtimeHours: entry.overtimeHours || 0,
           type: entry.overtimeHours > 0 ? 'OVERTIME' : 'REGULAR',
           weekNumber,
           yearNumber,
@@ -424,7 +440,6 @@ app.post('/api/time-entries/bulk', async (req, res) => {
 })
 
 // Get time entries by week
-// Update the time entries endpoint in server.cjs
 app.get('/api/time-entries', async (req, res) => {
   const { weekNumber, yearNumber } = req.query
 
@@ -439,7 +454,12 @@ app.get('/api/time-entries', async (req, res) => {
           include: {
             unionClass: {
               include: {
-                rates: {
+                baseRates: {
+                  orderBy: {
+                    effectiveDate: 'desc',
+                  },
+                },
+                customRates: {
                   orderBy: {
                     effectiveDate: 'desc',
                   },
@@ -449,6 +469,7 @@ app.get('/api/time-entries', async (req, res) => {
           },
         },
         project: true,
+        payment: true,
       },
       orderBy: {
         date: 'asc',
@@ -461,36 +482,7 @@ app.get('/api/time-entries', async (req, res) => {
   }
 })
 
-// Update time entry
-app.put('/api/time-entries/:id', async (req, res) => {
-  try {
-    const entry = await prisma.timeEntry.update({
-      where: { id: parseInt(req.params.id) },
-      data: {
-        regularHours: req.body.regularHours,
-        overtimeHours: req.body.overtimeHours,
-        type: req.body.overtimeHours > 0 ? 'OVERTIME' : 'REGULAR',
-      },
-    })
-    res.json(entry)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update time entry' })
-  }
-})
-
-// Delete time entry
-app.delete('/api/time-entries/:id', async (req, res) => {
-  try {
-    await prisma.timeEntry.delete({
-      where: { id: parseInt(req.params.id) },
-    })
-    res.json({ message: 'Time entry deleted successfully' })
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete time entry' })
-  }
-})
-
-// Get time entries for a date range with full details
+// Get time entries for date range
 app.get('/api/time-entries/range', async (req, res) => {
   const { startDate, endDate } = req.query
 
@@ -505,10 +497,16 @@ app.get('/api/time-entries/range', async (req, res) => {
       include: {
         employee: {
           include: {
-            unionClass: true,
+            unionClass: {
+              include: {
+                baseRates: true,
+                customRates: true,
+              },
+            },
           },
         },
         project: true,
+        payment: true,
       },
       orderBy: {
         date: 'desc',
@@ -520,6 +518,51 @@ app.get('/api/time-entries/range', async (req, res) => {
   }
 })
 
+// Update single time entry
+app.put('/api/time-entries/:id', async (req, res) => {
+  try {
+    const entry = await prisma.timeEntry.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        regularHours: req.body.regularHours || 0,
+        overtimeHours: req.body.overtimeHours || 0,
+        type: req.body.overtimeHours > 0 ? 'OVERTIME' : 'REGULAR',
+        projectId: req.body.projectId || null,
+        date: new Date(req.body.date),
+      },
+    })
+    res.json(entry)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update time entry' })
+  }
+})
+
+// Update time entry status
+app.patch('/api/time-entries/:id', async (req, res) => {
+  try {
+    const entry = await prisma.timeEntry.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        paymentStatus: req.body.paymentStatus,
+      },
+    })
+    res.json(entry)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update time entry status' })
+  }
+})
+
+// Delete time entry
+app.delete('/api/time-entries/:id', async (req, res) => {
+  try {
+    await prisma.timeEntry.delete({
+      where: { id: parseInt(req.params.id) },
+    })
+    res.json({ message: 'Time entry deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete time entry' })
+  }
+})
 // Add to server.cjs
 
 // Get local employee payments by week
@@ -580,47 +623,82 @@ app.get('/api/time-entries/local-payments', async (req, res) => {
   }
 })
 
-// Update payment status for time entries
 app.post('/api/time-entries/update-status', async (req, res) => {
   const { employeeId, weekNumber, yearNumber, status } = req.body
 
   try {
-    // Update time entries
-    await prisma.timeEntry.updateMany({
-      where: {
-        employeeId,
-        weekNumber,
-        yearNumber,
-      },
-      data: {
-        paymentStatus: status,
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: { employeeId, weekNumber, yearNumber },
+      include: {
+        employee: {
+          include: {
+            unionClass: {
+              include: {
+                baseRates: true,
+                customRates: true,
+              },
+            },
+          },
+        },
       },
     })
 
-    // Create payment record if status is PAID
     if (status === 'PAID') {
-      // Get time entries with employee data
-      const timeEntries = await prisma.timeEntry.findMany({
-        where: {
-          employeeId,
-          weekNumber,
-          yearNumber,
-        },
-        include: {
-          employee: true,
-        },
-      })
+      let totalAmount = 0
+      const details = []
 
-      // Calculate total amount
-      const totalAmount = timeEntries.reduce((sum, entry) => {
-        const hourlyRate = entry.employee.hourlyRate || 0
-        const regularPay = entry.regularHours * hourlyRate
-        const overtimePay = entry.overtimeHours * (hourlyRate * 1.5)
-        return sum + regularPay + overtimePay
-      }, 0)
+      for (const entry of timeEntries) {
+        if (entry.employee.employeeType === 'LOCAL') {
+          const hourlyRate = entry.employee.hourlyRate || 0
+          const regularPay = entry.regularHours * hourlyRate
+          const overtimePay = entry.overtimeHours * (hourlyRate * 1.5)
+          totalAmount += regularPay + overtimePay
+          details.push(`Regular: ${regularPay.toFixed(2)}, OT: ${overtimePay.toFixed(2)}`)
+        } else {
+          const date = new Date(entry.date)
+          date.setUTCHours(12, 0, 0, 0)
 
-      // Create payment record
-      const payment = await prisma.payment.create({
+          const baseRate = entry.employee.unionClass?.baseRates.find((rate) => {
+            const effectiveDate = new Date(rate.effectiveDate)
+            const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+            effectiveDate.setUTCHours(12, 0, 0, 0)
+            endDate.setUTCHours(12, 0, 0, 0)
+            return date >= effectiveDate && date <= endDate
+          })
+
+          const customRates =
+            entry.employee.unionClass?.customRates.filter((rate) => {
+              const effectiveDate = new Date(rate.effectiveDate)
+              const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+              effectiveDate.setUTCHours(12, 0, 0, 0)
+              endDate.setUTCHours(12, 0, 0, 0)
+              return date >= effectiveDate && date <= endDate
+            }) || []
+
+          if (baseRate) {
+            const regularPay = entry.regularHours * baseRate.regularRate
+            const overtimePay = entry.overtimeHours * baseRate.overtimeRate
+            const benefitsPay = (entry.regularHours + entry.overtimeHours) * baseRate.benefitsRate
+
+            const customPayments = customRates.map((rate) => ({
+              name: rate.name,
+              amount: (entry.regularHours + entry.overtimeHours) * rate.rate,
+            }))
+
+            const customTotal = customPayments.reduce((sum, p) => sum + p.amount, 0)
+            totalAmount += regularPay + overtimePay + benefitsPay + customTotal
+
+            details.push(
+              `Regular: ${regularPay.toFixed(2)}, ` +
+                `OT: ${overtimePay.toFixed(2)}, ` +
+                `Benefits: ${benefitsPay.toFixed(2)}, ` +
+                customPayments.map((p) => `${p.name}: ${p.amount.toFixed(2)}`).join(', '),
+            )
+          }
+        }
+      }
+
+      await prisma.payment.create({
         data: {
           employeeId,
           amount: totalAmount,
@@ -628,24 +706,22 @@ app.post('/api/time-entries/update-status', async (req, res) => {
           weekNumber,
           yearNumber,
           status: 'PAID',
+          notes: details.join(' | '),
+          timeEntries: {
+            connect: timeEntries.map((entry) => ({ id: entry.id })),
+          },
         },
       })
-
-      // Link time entries to payment
-      await prisma.$transaction(
-        timeEntries.map((entry) =>
-          prisma.timeEntry.update({
-            where: { id: entry.id },
-            data: { paymentId: payment.id },
-          }),
-        ),
-      )
     }
+
+    await prisma.timeEntry.updateMany({
+      where: { employeeId, weekNumber, yearNumber },
+      data: { paymentStatus: status },
+    })
 
     res.json({ message: 'Payment status updated successfully' })
   } catch (error) {
-    console.error('Error updating payment status:', error)
-    res.status(500).json({ error: 'Failed to update payment status', details: error.message })
+    res.status(500).json({ error: 'Failed to update payment status' })
   }
 })
 
@@ -784,33 +860,48 @@ app.get('/api/union-rates/:employeeId/:date', async (req, res) => {
   try {
     const { employeeId, date } = req.params
     const checkDate = new Date(date)
+    checkDate.setUTCHours(12, 0, 0, 0)
 
     const employee = await prisma.employee.findUnique({
       where: { id: parseInt(employeeId) },
       include: {
         unionClass: {
           include: {
-            rates: true,
+            baseRates: true,
+            customRates: true,
           },
         },
       },
     })
 
-    if (!employee || !employee.unionClass) {
+    if (!employee?.unionClass) {
       return res.status(404).json({ error: 'Employee or union class not found' })
     }
 
-    const applicableRate = employee.unionClass.rates.find((rate) => {
+    const baseRate = employee.unionClass.baseRates.find((rate) => {
       const effectiveDate = new Date(rate.effectiveDate)
       const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+      effectiveDate.setUTCHours(12, 0, 0, 0)
+      endDate.setUTCHours(12, 0, 0, 0)
       return checkDate >= effectiveDate && checkDate <= endDate
     })
 
-    if (!applicableRate) {
-      return res.status(404).json({ error: 'No applicable rate found for the date' })
+    const customRates = employee.unionClass.customRates.filter((rate) => {
+      const effectiveDate = new Date(rate.effectiveDate)
+      const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+      effectiveDate.setUTCHours(12, 0, 0, 0)
+      endDate.setUTCHours(12, 0, 0, 0)
+      return checkDate >= effectiveDate && checkDate <= endDate
+    })
+
+    if (!baseRate && customRates.length === 0) {
+      return res.status(404).json({ error: 'No applicable rates found for the date' })
     }
 
-    res.json(applicableRate)
+    res.json({
+      baseRate,
+      customRates,
+    })
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch union rates' })
   }
@@ -1427,7 +1518,8 @@ app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
           include: {
             unionClass: {
               include: {
-                rates: true,
+                baseRates: true,
+                customRates: true,
               },
             },
           },
@@ -1455,28 +1547,52 @@ app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
       regularPay: 0,
       overtimePay: 0,
       benefitsPay: 0,
+      customRatesPay: {},
       totalPay: 0,
     }
 
     // Calculate union pay with historical rates
     for (const entry of unionEntries) {
-      const entryDate = normalizeDate(entry.date)
-      const rates = entry.employee.unionClass?.rates || []
-      const applicableRate = rates.find((rate) => {
-        const effectiveDate = normalizeDate(rate.effectiveDate)
-        const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
+      const entryDate = new Date(entry.date)
+      entryDate.setUTCHours(12, 0, 0, 0)
+
+      const baseRate = entry.employee.unionClass?.baseRates.find((rate) => {
+        const effectiveDate = new Date(rate.effectiveDate)
+        const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+        effectiveDate.setUTCHours(12, 0, 0, 0)
+        endDate.setUTCHours(12, 0, 0, 0)
         return entryDate >= effectiveDate && entryDate <= endDate
       })
 
-      if (applicableRate) {
-        unionStats.regularPay += entry.regularHours * applicableRate.regularRate
-        unionStats.overtimePay += entry.overtimeHours * applicableRate.overtimeRate
-        unionStats.benefitsPay +=
-          (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+      const customRates =
+        entry.employee.unionClass?.customRates.filter((rate) => {
+          const effectiveDate = new Date(rate.effectiveDate)
+          const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+          effectiveDate.setUTCHours(12, 0, 0, 0)
+          endDate.setUTCHours(12, 0, 0, 0)
+          return entryDate >= effectiveDate && entryDate <= endDate
+        }) || []
+
+      if (baseRate) {
+        unionStats.regularPay += entry.regularHours * baseRate.regularRate
+        unionStats.overtimePay += entry.overtimeHours * baseRate.overtimeRate
+        unionStats.benefitsPay += (entry.regularHours + entry.overtimeHours) * baseRate.benefitsRate
+
+        customRates.forEach((rate) => {
+          if (!unionStats.customRatesPay[rate.name]) {
+            unionStats.customRatesPay[rate.name] = 0
+          }
+          unionStats.customRatesPay[rate.name] +=
+            (entry.regularHours + entry.overtimeHours) * rate.rate
+        })
       }
     }
 
-    unionStats.totalPay = unionStats.regularPay + unionStats.overtimePay + unionStats.benefitsPay
+    unionStats.totalPay =
+      unionStats.regularPay +
+      unionStats.overtimePay +
+      unionStats.benefitsPay +
+      Object.values(unionStats.customRatesPay).reduce((sum, val) => sum + val, 0)
 
     res.json({
       total: localStats.count + unionStats.count,
@@ -1484,12 +1600,11 @@ app.get('/api/projects/:projectId/labor/active-workers', async (req, res) => {
       union: unionStats,
     })
   } catch (error) {
-    console.error('Error fetching active workers:', error)
     res.status(500).json({ error: 'Failed to fetch active workers' })
   }
 })
 
-app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
+app.get('/api/projects/:projectId/labor/union-stats', async (req, res) => {
   const { startDate, endDate } = req.query
 
   try {
@@ -1499,7 +1614,7 @@ app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
           gte: new Date(startDate),
           lte: new Date(endDate),
         },
-        projectId: req.params.id,
+        projectId: req.params.projectId,
         employee: {
           employeeType: 'UNION',
         },
@@ -1523,7 +1638,8 @@ app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
     for (const entry of entries) {
       const classId = entry.employee.unionClassId
       const className = entry.employee.unionClass?.name || 'Unknown'
-      const entryDate = normalizeDate(entry.date)
+      const entryDate = new Date(entry.date)
+      entryDate.setUTCHours(12, 0, 0, 0)
 
       if (!statsByClass[classId]) {
         statsByClass[classId] = {
@@ -1544,15 +1660,19 @@ app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
       statsByClass[classId].workers.add(entry.employeeId)
 
       const baseRate = entry.employee.unionClass?.baseRates.find((rate) => {
-        const effectiveDate = normalizeDate(rate.effectiveDate)
-        const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
+        const effectiveDate = new Date(rate.effectiveDate)
+        const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+        effectiveDate.setUTCHours(12, 0, 0, 0)
+        endDate.setUTCHours(12, 0, 0, 0)
         return entryDate >= effectiveDate && entryDate <= endDate
       })
 
       const customRates =
         entry.employee.unionClass?.customRates.filter((rate) => {
-          const effectiveDate = normalizeDate(rate.effectiveDate)
-          const endDate = rate.endDate ? normalizeDate(rate.endDate) : new Date()
+          const effectiveDate = new Date(rate.effectiveDate)
+          const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+          effectiveDate.setUTCHours(12, 0, 0, 0)
+          endDate.setUTCHours(12, 0, 0, 0)
           return entryDate >= effectiveDate && entryDate <= endDate
         }) || []
 
@@ -1572,7 +1692,6 @@ app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
       }
     }
 
-    // Calculate totals and format response
     const formattedStats = Object.values(statsByClass).map((stat) => {
       const customRatesTotal = Object.values(stat.customRatesPay).reduce((sum, val) => sum + val, 0)
       const totalPay = stat.regularPay + stat.overtimePay + stat.benefitsPay + customRatesTotal
@@ -1590,7 +1709,6 @@ app.get('/api/projects/:id/labor/union-stats', async (req, res) => {
 
     res.json(formattedStats)
   } catch (error) {
-    console.error('Error fetching union stats:', error)
     res.status(500).json({ error: 'Failed to fetch union stats' })
   }
 })
@@ -1699,17 +1817,15 @@ app.get('/api/projects/:id/expenses/summary', async (req, res) => {
 // Get labor cost summary
 app.get('/api/projects/:id/labor/summary', async (req, res) => {
   try {
-    // Get all time entries for the project
     const timeEntries = await prisma.timeEntry.findMany({
-      where: {
-        projectId: req.params.id,
-      },
+      where: { projectId: req.params.id },
       include: {
         employee: {
           include: {
             unionClass: {
               include: {
-                rates: true,
+                baseRates: true,
+                customRates: true,
               },
             },
           },
@@ -1720,6 +1836,7 @@ app.get('/api/projects/:id/labor/summary', async (req, res) => {
     const laborCosts = {
       unionBase: 0,
       unionBenefits: 0,
+      unionCustomRates: {},
       local: 0,
     }
 
@@ -1729,27 +1846,47 @@ app.get('/api/projects/:id/labor/summary', async (req, res) => {
         laborCosts.local += entry.regularHours * hourlyRate
         laborCosts.local += entry.overtimeHours * (hourlyRate * 1.5)
       } else {
-        // Find applicable union rate for the entry date
         const entryDate = new Date(entry.date)
-        const rates = entry.employee.unionClass?.rates || []
-        const applicableRate = rates.find((rate) => {
+        entryDate.setUTCHours(12, 0, 0, 0)
+
+        const baseRate = entry.employee.unionClass?.baseRates.find((rate) => {
           const effectiveDate = new Date(rate.effectiveDate)
           const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+          effectiveDate.setUTCHours(12, 0, 0, 0)
+          endDate.setUTCHours(12, 0, 0, 0)
           return entryDate >= effectiveDate && entryDate <= endDate
         })
 
-        if (applicableRate) {
-          laborCosts.unionBase += entry.regularHours * applicableRate.regularRate
-          laborCosts.unionBase += entry.overtimeHours * applicableRate.overtimeRate
+        const customRates =
+          entry.employee.unionClass?.customRates.filter((rate) => {
+            const effectiveDate = new Date(rate.effectiveDate)
+            const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+            effectiveDate.setUTCHours(12, 0, 0, 0)
+            endDate.setUTCHours(12, 0, 0, 0)
+            return entryDate >= effectiveDate && entryDate <= endDate
+          }) || []
+
+        if (baseRate) {
+          laborCosts.unionBase += entry.regularHours * baseRate.regularRate
+          laborCosts.unionBase += entry.overtimeHours * baseRate.overtimeRate
           laborCosts.unionBenefits +=
-            (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+            (entry.regularHours + entry.overtimeHours) * baseRate.benefitsRate
+
+          customRates.forEach((rate) => {
+            if (!laborCosts.unionCustomRates[rate.name]) {
+              laborCosts.unionCustomRates[rate.name] = 0
+            }
+            laborCosts.unionCustomRates[rate.name] +=
+              (entry.regularHours + entry.overtimeHours) * rate.rate
+          })
         }
       }
     }
 
-    // Round to 2 decimal places
     Object.keys(laborCosts).forEach((key) => {
-      laborCosts[key] = Math.round(laborCosts[key] * 100) / 100
+      if (typeof laborCosts[key] === 'number') {
+        laborCosts[key] = Math.round(laborCosts[key] * 100) / 100
+      }
     })
 
     res.json(laborCosts)
@@ -1770,41 +1907,33 @@ app.get('/api/projects/:id/financials/monthly', async (req, res) => {
     const endDate = new Date()
     const months = []
 
-    // Generate array of months
     for (let d = new Date(startDate); d <= endDate; d.setMonth(d.getMonth() + 1)) {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+      monthStart.setUTCHours(12, 0, 0, 0)
+      monthEnd.setUTCHours(12, 0, 0, 0)
 
       const [expenses, timeEntries] = await Promise.all([
-        // Get expenses for month
         prisma.expense.aggregate({
           where: {
             projectId: req.params.id,
-            date: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
+            date: { gte: monthStart, lte: monthEnd },
           },
-          _sum: {
-            amount: true,
-          },
+          _sum: { amount: true },
         }),
 
-        // Get time entries for month
         prisma.timeEntry.findMany({
           where: {
             projectId: req.params.id,
-            date: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
+            date: { gte: monthStart, lte: monthEnd },
           },
           include: {
             employee: {
               include: {
                 unionClass: {
                   include: {
-                    rates: true,
+                    baseRates: true,
+                    customRates: true,
                   },
                 },
               },
@@ -1813,24 +1942,51 @@ app.get('/api/projects/:id/financials/monthly', async (req, res) => {
         }),
       ])
 
-      // Calculate labor cost
-      let laborCost = 0
+      let laborCost = {
+        base: 0,
+        benefits: 0,
+        customRates: {},
+      }
+
       for (const entry of timeEntries) {
         if (entry.employee.employeeType === 'LOCAL') {
           const hourlyRate = entry.employee.hourlyRate || 0
-          laborCost += entry.regularHours * hourlyRate
-          laborCost += entry.overtimeHours * (hourlyRate * 1.5)
+          laborCost.base +=
+            entry.regularHours * hourlyRate + entry.overtimeHours * (hourlyRate * 1.5)
         } else {
-          const applicableRate = entry.employee.unionClass?.rates.find((rate) => {
+          const entryDate = new Date(entry.date)
+          entryDate.setUTCHours(12, 0, 0, 0)
+
+          const baseRate = entry.employee.unionClass?.baseRates.find((rate) => {
             const effectiveDate = new Date(rate.effectiveDate)
             const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
-            return entry.date >= effectiveDate && entry.date <= endDate
+            effectiveDate.setUTCHours(12, 0, 0, 0)
+            endDate.setUTCHours(12, 0, 0, 0)
+            return entryDate >= effectiveDate && entryDate <= endDate
           })
 
-          if (applicableRate) {
-            laborCost += entry.regularHours * applicableRate.regularRate
-            laborCost += entry.overtimeHours * applicableRate.overtimeRate
-            laborCost += (entry.regularHours + entry.overtimeHours) * applicableRate.benefitsRate
+          const customRates =
+            entry.employee.unionClass?.customRates.filter((rate) => {
+              const effectiveDate = new Date(rate.effectiveDate)
+              const endDate = rate.endDate ? new Date(rate.endDate) : new Date()
+              effectiveDate.setUTCHours(12, 0, 0, 0)
+              endDate.setUTCHours(12, 0, 0, 0)
+              return entryDate >= effectiveDate && entryDate <= endDate
+            }) || []
+
+          if (baseRate) {
+            laborCost.base +=
+              entry.regularHours * baseRate.regularRate +
+              entry.overtimeHours * baseRate.overtimeRate
+            laborCost.benefits += (entry.regularHours + entry.overtimeHours) * baseRate.benefitsRate
+
+            customRates.forEach((rate) => {
+              if (!laborCost.customRates[rate.name]) {
+                laborCost.customRates[rate.name] = 0
+              }
+              laborCost.customRates[rate.name] +=
+                (entry.regularHours + entry.overtimeHours) * rate.rate
+            })
           }
         }
       }
@@ -1838,7 +1994,23 @@ app.get('/api/projects/:id/financials/monthly', async (req, res) => {
       months.push({
         month: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         expenses: Math.round((expenses._sum.amount || 0) * 100) / 100,
-        labor: Math.round(laborCost * 100) / 100,
+        labor: {
+          base: Math.round(laborCost.base * 100) / 100,
+          benefits: Math.round(laborCost.benefits * 100) / 100,
+          customRates: Object.fromEntries(
+            Object.entries(laborCost.customRates).map(([name, amount]) => [
+              name,
+              Math.round(amount * 100) / 100,
+            ]),
+          ),
+          total:
+            Math.round(
+              (laborCost.base +
+                laborCost.benefits +
+                Object.values(laborCost.customRates).reduce((sum, val) => sum + val, 0)) *
+                100,
+            ) / 100,
+        },
       })
     }
 
