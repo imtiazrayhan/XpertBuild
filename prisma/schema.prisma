@@ -130,18 +130,34 @@ model UnionClass {
   id            Int              @id @default(autoincrement())
   name          String
   employees     Employee[]
-  rates         UnionClassRate[]
+  baseRates     UnionClassBaseRate[]
+  customRates   UnionClassCustomRate[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 }
 
-model UnionClassRate {
+model UnionClassBaseRate {
   id            Int          @id @default(autoincrement())
   unionClass    UnionClass   @relation(fields: [unionClassId], references: [id])
   unionClassId  Int
   regularRate   Float
   overtimeRate  Float
   benefitsRate  Float
+  effectiveDate DateTime
+  endDate       DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([unionClassId, effectiveDate])
+}
+
+model UnionClassCustomRate {
+  id            Int          @id @default(autoincrement())
+  name          String       
+  description   String?
+  rate          Float
+  unionClass    UnionClass   @relation(fields: [unionClassId], references: [id])
+  unionClassId  Int
   effectiveDate DateTime
   endDate       DateTime?
   createdAt     DateTime     @default(now())

@@ -1,16 +1,9 @@
 <!-- UnionClassesPage.vue -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { XMarkIcon, PencilIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, PencilIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline'
 
-// Date utility function
-const normalizeDate = (date: Date | string): Date => {
-  const d = new Date(date)
-  d.setUTCHours(12, 0, 0, 0)
-  return d
-}
-
-interface UnionClassRate {
+interface UnionClassBaseRate {
   id: number
   regularRate: number
   overtimeRate: number
@@ -19,12 +12,20 @@ interface UnionClassRate {
   endDate: string | null
 }
 
+interface UnionClassCustomRate {
+  id: number
+  name: string
+  description?: string
+  rate: number
+  effectiveDate: string
+  endDate: string | null
+}
+
 interface UnionClass {
   id: number
   name: string
-  rates: UnionClassRate[]
-  createdAt: string
-  updatedAt: string
+  baseRates: UnionClassBaseRate[]
+  customRates: UnionClassCustomRate[]
 }
 
 const unionClasses = ref<UnionClass[]>([])
@@ -36,13 +37,15 @@ const newClass = ref({
   name: '',
 })
 
-const newRate = ref({
+const newBaseRate = ref({
   regularRate: 0,
   overtimeRate: 0,
   benefitsRate: 0,
-  effectiveDate: normalizeDate(new Date()).toISOString().split('T')[0],
+  effectiveDate: '',
   endDate: '',
 })
+
+const customRates = ref<{ name: string; description?: string; rate: number }[]>([])
 
 const fetchUnionClasses = async () => {
   try {
@@ -75,16 +78,13 @@ const addRate = async () => {
   if (!selectedClass.value) return
 
   try {
-    const rateData = {
-      ...newRate.value,
-      effectiveDate: normalizeDate(newRate.value.effectiveDate),
-      endDate: newRate.value.endDate ? normalizeDate(newRate.value.endDate) : null,
-    }
-
     const response = await fetch(`/api/union-classes/${selectedClass.value.id}/rates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rateData),
+      body: JSON.stringify({
+        baseRate: newBaseRate.value,
+        customRates: customRates.value,
+      }),
     })
 
     if (response.ok) {
@@ -98,14 +98,27 @@ const addRate = async () => {
 }
 
 const resetRateForm = () => {
-  newRate.value = {
+  newBaseRate.value = {
     regularRate: 0,
     overtimeRate: 0,
     benefitsRate: 0,
-    effectiveDate: normalizeDate(new Date()).toISOString().split('T')[0],
+    effectiveDate: '',
     endDate: '',
   }
+  customRates.value = []
   selectedClass.value = null
+}
+
+const addCustomRate = () => {
+  customRates.value.push({
+    name: '',
+    description: '',
+    rate: 0,
+  })
+}
+
+const removeCustomRate = (index: number) => {
+  customRates.value.splice(index, 1)
 }
 
 const formatCurrency = (value: number) => {
@@ -116,7 +129,9 @@ const formatCurrency = (value: number) => {
 }
 
 const formatDate = (dateString: string) => {
-  return normalizeDate(dateString).toLocaleDateString('en-US')
+  const date = new Date(dateString)
+  date.setUTCHours(12, 0, 0, 0)
+  return date.toLocaleDateString('en-US')
 }
 
 onMounted(fetchUnionClasses)
@@ -157,15 +172,24 @@ onMounted(fetchUnionClasses)
             <tr v-for="unionClass in unionClasses" :key="unionClass.id">
               <td class="px-6 py-4">{{ unionClass.name }}</td>
               <td class="px-6 py-4">
-                <div v-if="unionClass.rates.length > 0" class="space-y-1">
+                <div v-if="unionClass.baseRates.length > 0" class="space-y-1">
                   <div class="text-sm">
-                    Regular: {{ formatCurrency(unionClass.rates[0].regularRate) }}/hr
+                    Regular: {{ formatCurrency(unionClass.baseRates[0].regularRate) }}/hr
                   </div>
                   <div class="text-sm">
-                    Overtime: {{ formatCurrency(unionClass.rates[0].overtimeRate) }}/hr
+                    Overtime: {{ formatCurrency(unionClass.baseRates[0].overtimeRate) }}/hr
                   </div>
                   <div class="text-sm">
-                    Benefits: {{ formatCurrency(unionClass.rates[0].benefitsRate) }}/hr
+                    Benefits: {{ formatCurrency(unionClass.baseRates[0].benefitsRate) }}/hr
+                  </div>
+                  <div v-if="unionClass.customRates.length > 0" class="mt-2 pt-2 border-t">
+                    <div
+                      v-for="customRate in unionClass.customRates"
+                      :key="customRate.id"
+                      class="text-sm"
+                    >
+                      {{ customRate.name }}: {{ formatCurrency(customRate.rate) }}/hr
+                    </div>
                   </div>
                 </div>
                 <div v-else class="text-gray-500">No rates set</div>
@@ -200,15 +224,30 @@ onMounted(fetchUnionClasses)
               <th class="px-4 py-2 text-left">Regular Rate</th>
               <th class="px-4 py-2 text-left">Overtime Rate</th>
               <th class="px-4 py-2 text-left">Benefits Rate</th>
+              <th class="px-4 py-2 text-left">Custom Rates</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rate in unionClass.rates" :key="rate.id" class="border-t">
+            <tr v-for="rate in unionClass.baseRates" :key="rate.id" class="border-t">
               <td class="px-4 py-2">{{ formatDate(rate.effectiveDate) }}</td>
               <td class="px-4 py-2">{{ rate.endDate ? formatDate(rate.endDate) : 'Current' }}</td>
               <td class="px-4 py-2">{{ formatCurrency(rate.regularRate) }}/hr</td>
               <td class="px-4 py-2">{{ formatCurrency(rate.overtimeRate) }}/hr</td>
               <td class="px-4 py-2">{{ formatCurrency(rate.benefitsRate) }}/hr</td>
+              <td class="px-4 py-2">
+                <div class="space-y-1">
+                  <div
+                    v-for="customRate in unionClass.customRates.filter(
+                      (cr) =>
+                        new Date(cr.effectiveDate) <= new Date(rate.effectiveDate) &&
+                        (!cr.endDate || new Date(cr.endDate) >= new Date(rate.effectiveDate)),
+                    )"
+                    :key="customRate.id"
+                  >
+                    {{ customRate.name }}: {{ formatCurrency(customRate.rate) }}/hr
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -263,7 +302,7 @@ onMounted(fetchUnionClasses)
       v-if="showRateModal"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
     >
-      <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
+      <div class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-bold">Add Rate - {{ selectedClass?.name }}</h2>
           <button @click="showRateModal = false" class="text-gray-500 hover:text-gray-700">
@@ -272,41 +311,49 @@ onMounted(fetchUnionClasses)
         </div>
 
         <form @submit.prevent="addRate" class="space-y-4">
+          <!-- Base Rates -->
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <h3 class="text-lg font-medium mb-4">Base Rates</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Regular Rate ($/hr)</label>
+                <input
+                  v-model="newBaseRate.regularRate"
+                  type="number"
+                  step="0.01"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Overtime Rate ($/hr)</label>
+                <input
+                  v-model="newBaseRate.overtimeRate"
+                  type="number"
+                  step="0.01"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700">Benefits Rate ($/hr)</label>
+                <input
+                  v-model="newBaseRate.benefitsRate"
+                  type="number"
+                  step="0.01"
+                  required
+                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Date Range -->
           <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Regular Rate ($/hr)</label>
-              <input
-                v-model="newRate.regularRate"
-                type="number"
-                step="0.01"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Overtime Rate ($/hr)</label>
-              <input
-                v-model="newRate.overtimeRate"
-                type="number"
-                step="0.01"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Benefits Rate ($/hr)</label>
-              <input
-                v-model="newRate.benefitsRate"
-                type="number"
-                step="0.01"
-                required
-                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
             <div>
               <label class="block text-sm font-medium text-gray-700">Effective Date</label>
               <input
-                v-model="newRate.effectiveDate"
+                v-model="newBaseRate.effectiveDate"
                 type="date"
                 required
                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
@@ -315,10 +362,80 @@ onMounted(fetchUnionClasses)
             <div>
               <label class="block text-sm font-medium text-gray-700">End Date (Optional)</label>
               <input
-                v-model="newRate.endDate"
+                v-model="newBaseRate.endDate"
                 type="date"
                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
               />
+            </div>
+          </div>
+
+          <!-- Custom Rates -->
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-lg font-medium">Custom Rates</h3>
+              <button
+                type="button"
+                @click="addCustomRate"
+                class="text-blue-600 hover:text-blue-800 flex items-center"
+              >
+                <PlusIcon class="w-5 h-5 mr-1" />
+                Add Custom Rate
+              </button>
+            </div>
+
+            <div
+              v-for="(rate, index) in customRates"
+              :key="index"
+              class="border-t pt-4 mt-4 first:border-t-0 first:pt-0 first:mt-0"
+            >
+              <div class="flex justify-between items-start mb-2">
+                <h4 class="text-sm font-medium">Custom Rate {{ index + 1 }}</h4>
+                <button
+                  type="button"
+                  @click="removeCustomRate(index)"
+                  class="text-red-600 hover:text-red-800"
+                >
+                  <TrashIcon class="w-5 h-5" />
+                </button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700">Rate Name</label>
+                  <input
+                    v-model="rate.name"
+                    type="text"
+                    required
+                    class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    placeholder="e.g. Health Fund"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700">Rate ($/hr)</label>
+                  <input
+                    v-model="rate.rate"
+                    type="number"
+                    step="0.01"
+                    required
+                    class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                  />
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-sm font-medium text-gray-700"
+                    >Description (Optional)</label
+                  >
+                  <input
+                    v-model="rate.description"
+                    type="text"
+                    class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+                    placeholder="Brief description of this rate"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div v-if="customRates.length === 0" class="text-gray-500 text-sm text-center py-4">
+              No custom rates added
             </div>
           </div>
 
