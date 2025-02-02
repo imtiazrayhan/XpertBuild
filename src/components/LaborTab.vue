@@ -50,6 +50,10 @@ interface UnionStats {
   regularPay: number
   overtimePay: number
   benefitsPay: number
+  customRatesPay: {
+    name: string
+    amount: number
+  }[]
   totalPay: number
 }
 
@@ -142,22 +146,41 @@ const paymentSummary = computed(() => {
     totalRegularPay: 0,
     totalOvertimePay: 0,
     totalBenefitsPay: 0,
+    totalCustomRatesPay: 0,
     totalPay: 0,
   }
 
   // Sum up all union stats
   unionStats.value.forEach((stat) => {
-    summary.totalRegularPay += stat.regularPay
-    summary.totalOvertimePay += stat.overtimePay
-    summary.totalBenefitsPay += stat.benefitsPay
-    summary.totalPay += stat.totalPay
+    summary.totalRegularPay += Number(stat.regularPay) || 0
+    summary.totalOvertimePay += Number(stat.overtimePay) || 0
+    summary.totalBenefitsPay += Number(stat.benefitsPay) || 0
+
+    // Sum custom rates
+    if (Array.isArray(stat.customRatesPay)) {
+      summary.totalCustomRatesPay += stat.customRatesPay.reduce(
+        (sum, rate) => sum + (Number(rate.amount) || 0),
+        0,
+      )
+    }
   })
 
-  // Add local worker pay
-  summary.totalRegularPay += activeWorkers.value.local.totalPay
-  summary.totalPay += activeWorkers.value.local.totalPay
+  const localPay = Number(activeWorkers.value?.local?.totalPay) || 0
+  summary.totalRegularPay += localPay
 
-  return summary
+  summary.totalPay =
+    summary.totalRegularPay +
+    summary.totalOvertimePay +
+    summary.totalBenefitsPay +
+    summary.totalCustomRatesPay
+
+  return {
+    totalRegularPay: Number(summary.totalRegularPay.toFixed(2)),
+    totalOvertimePay: Number(summary.totalOvertimePay.toFixed(2)),
+    totalBenefitsPay: Number(summary.totalBenefitsPay.toFixed(2)),
+    totalCustomRatesPay: Number(summary.totalCustomRatesPay.toFixed(2)),
+    totalPay: Number(summary.totalPay.toFixed(2)),
+  }
 })
 
 function getWeekNumber(d: Date): { year: number; week: number } {
@@ -504,9 +527,9 @@ onMounted(() => {
       <div
         class="bg-gradient-to-br from-teal-50 to-teal-100 p-6 rounded-lg shadow-sm border border-teal-200"
       >
-        <h3 class="text-sm font-medium text-teal-700">Total Union Benefits Pay</h3>
+        <h3 class="text-sm font-medium text-teal-700">Total Benefits & Custom Rates</h3>
         <p class="mt-2 text-3xl font-bold text-teal-900">
-          {{ formatCurrency(paymentSummary.totalBenefitsPay) }}
+          {{ formatCurrency(paymentSummary.totalBenefitsPay + paymentSummary.totalCustomRatesPay) }}
         </p>
       </div>
 
@@ -607,6 +630,16 @@ onMounted(() => {
               <span>Benefits Pay:</span>
               <span class="font-medium">{{ formatCurrency(stat.benefitsPay) }}</span>
             </div>
+            <template v-if="stat.customRatesPay && stat.customRatesPay.length">
+              <div
+                v-for="rate in stat.customRatesPay"
+                :key="rate.name"
+                class="flex justify-between text-sky-700"
+              >
+                <span>{{ rate.name }}:</span>
+                <span class="font-medium">{{ formatCurrency(rate.amount) }}</span>
+              </div>
+            </template>
             <div class="flex justify-between text-sky-900 font-medium pt-2 border-t border-sky-200">
               <span>Total Pay:</span>
               <span>{{ formatCurrency(stat.totalPay) }}</span>
