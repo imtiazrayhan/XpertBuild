@@ -39,6 +39,10 @@ interface ExpenseSummary {
 interface LaborCost {
   unionBase: number
   unionBenefits: number
+  unionCustomRates: {
+    name: string
+    amount: number
+  }[]
   local: number
 }
 
@@ -49,9 +53,11 @@ const expenses = ref<ExpenseSummary>({
   rentals: 0,
   operational: 0,
 })
+
 const laborCosts = ref<LaborCost>({
   unionBase: 0,
   unionBenefits: 0,
+  unionCustomRates: [],
   local: 0,
 })
 
@@ -63,17 +69,30 @@ const totalExpenses = computed(
     expenses.value.operational,
 )
 
-const totalLaborCost = computed(
-  () =>
-    laborCosts.value.unionBase +
-    laborCosts.value.unionBenefits +
-    laborCosts.value.local +
-    payrollBurden.value,
-)
+const totalLaborCost = computed(() => {
+  const totalCustomRates = Array.isArray(laborCosts.value.unionCustomRates)
+    ? laborCosts.value.unionCustomRates.reduce((sum, rate) => sum + (Number(rate.amount) || 0), 0)
+    : 0
+
+  return (
+    Number(laborCosts.value.unionBase || 0) +
+    Number(laborCosts.value.unionBenefits || 0) +
+    Number(laborCosts.value.local || 0) +
+    totalCustomRates +
+    payrollBurden.value
+  )
+})
+const totalBenefitsPay = computed(() => {
+  const customRatesTotal = Array.isArray(laborCosts.value.unionCustomRates)
+    ? laborCosts.value.unionCustomRates.reduce((sum, rate) => sum + (Number(rate.amount) || 0), 0)
+    : 0
+
+  return Number(laborCosts.value.unionBenefits || 0) + customRatesTotal
+})
 
 const payrollBurden = computed(() => laborCosts.value.unionBase * 0.2)
 
-const totalCost = computed(() => totalExpenses.value + totalLaborCost.value + payrollBurden.value)
+const totalCost = computed(() => totalExpenses.value + totalLaborCost.value)
 
 const projectedProfit = computed(() => contractValue.value - totalCost.value)
 
@@ -81,6 +100,7 @@ const profitMargin = computed(() => (projectedProfit.value / contractValue.value
 
 const monthlyData = ref([])
 
+// Add debug logging in fetchProjectFinancials
 const fetchProjectFinancials = async () => {
   try {
     const [projectRes, expensesRes, laborRes] = await Promise.all([
@@ -95,7 +115,21 @@ const fetchProjectFinancials = async () => {
 
     contractValue.value = project.contractValue
     expenses.value = expenseData
-    laborCosts.value = laborData
+
+    // Handle unionCustomRates as an object
+    const customRatesArray = Object.entries(laborData.unionCustomRates || {}).map(
+      ([name, amount]) => ({
+        name,
+        amount: Number(amount) || 0,
+      }),
+    )
+
+    laborCosts.value = {
+      unionBase: Number(laborData.unionBase) || 0,
+      unionBenefits: Number(laborData.unionBenefits) || 0,
+      unionCustomRates: customRatesArray,
+      local: Number(laborData.local) || 0,
+    }
   } catch (error) {
     console.error('Error fetching financial data:', error)
   }
@@ -110,38 +144,30 @@ const fetchMonthlyData = async () => {
   }
 }
 
-const pieChartData = computed(() => ({
-  labels: ['Union Labor', 'Local Labor', 'Materials', 'Tools', 'Rentals', 'Operational', 'Burden'],
-  datasets: [
-    {
-      data: [
-        laborCosts.value.unionBase + laborCosts.value.unionBenefits,
-        laborCosts.value.local,
-        expenses.value.material,
-        expenses.value.tools,
-        expenses.value.rentals,
-        expenses.value.operational,
-        payrollBurden.value,
-      ],
-      backgroundColor: [
-        '#4F46E5', // Union Labor
-        '#60A5FA', // Local Labor
-        '#34D399', // Materials
-        '#FBBF24', // Tools
-        '#F87171', // Rentals
-        '#A78BFA', // Operational
-        '#6B7280', // Burden
-      ],
-    },
-  ],
-}))
+const pieChartData = computed(() => {
+  const baseData = [
+    Number(laborCosts.value.unionBase) || 0,
+    totalBenefitsPay.value, // Combined benefits and custom rates
+    Number(laborCosts.value.local) || 0,
+  ]
+
+  return {
+    labels: ['Union Base Labor', 'Union Benefits & Custom Rates', 'Local Labor'],
+    datasets: [
+      {
+        data: baseData,
+        backgroundColor: ['#4F46E5', '#60A5FA', '#34D399'],
+      },
+    ],
+  }
+})
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value)
 }
 
@@ -198,6 +224,16 @@ onMounted(() => {
             <span class="text-gray-500">Union Benefits Pay:</span>
             <span>{{ formatCurrency(laborCosts.unionBenefits) }}</span>
           </div>
+          <template v-if="laborCosts.unionCustomRates.length">
+            <div
+              v-for="rate in laborCosts.unionCustomRates"
+              :key="rate.name"
+              class="flex justify-between"
+            >
+              <span class="text-gray-500">{{ rate.name }}:</span>
+              <span>{{ formatCurrency(rate.amount) }}</span>
+            </div>
+          </template>
           <div class="flex justify-between">
             <span class="text-gray-500">Local Labor Pay:</span>
             <span>{{ formatCurrency(laborCosts.local) }}</span>
