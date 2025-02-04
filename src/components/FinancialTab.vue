@@ -47,6 +47,7 @@ interface LaborCost {
 }
 
 const contractValue = ref(0)
+const completedValue = ref(0)
 const expenses = ref<ExpenseSummary>({
   material: 0,
   tools: 0,
@@ -60,6 +61,8 @@ const laborCosts = ref<LaborCost>({
   unionCustomRates: [],
   local: 0,
 })
+
+const monthlyData = ref([])
 
 const totalExpenses = computed(
   () =>
@@ -82,6 +85,7 @@ const totalLaborCost = computed(() => {
     payrollBurden.value
   )
 })
+
 const totalBenefitsPay = computed(() => {
   const customRatesTotal = Array.isArray(laborCosts.value.unionCustomRates)
     ? laborCosts.value.unionCustomRates.reduce((sum, rate) => sum + (Number(rate.amount) || 0), 0)
@@ -94,29 +98,60 @@ const payrollBurden = computed(() => laborCosts.value.unionBase * 0.2)
 
 const totalCost = computed(() => totalExpenses.value + totalLaborCost.value)
 
-const projectedProfit = computed(() => contractValue.value - totalCost.value)
+const costPerDollarOfWork = computed(() => totalCost.value / completedValue.value)
 
-const profitMargin = computed(() => (projectedProfit.value / contractValue.value) * 100)
+// Current performance
+const currentProfit = computed(() => completedValue.value - totalCost.value)
 
-const monthlyData = ref([])
+const currentProfitMargin = computed(() =>
+  completedValue.value > 0 ? (currentProfit.value / completedValue.value) * 100 : 0,
+)
 
-// Add debug logging in fetchProjectFinancials
+// Project total based on current performance
+const totalProjectedCost = computed(() => contractValue.value * costPerDollarOfWork.value)
+
+const projectedProfit = computed(() => contractValue.value - totalProjectedCost.value)
+
+const projectedProfitMargin = computed(() =>
+  contractValue.value > 0 ? (projectedProfit.value / contractValue.value) * 100 : 0,
+)
+
+const pieChartData = computed(() => {
+  const baseData = [
+    Number(laborCosts.value.unionBase) || 0,
+    totalBenefitsPay.value,
+    Number(laborCosts.value.local) || 0,
+  ]
+
+  return {
+    labels: ['Union Base Labor', 'Union Benefits & Custom Rates', 'Local Labor'],
+    datasets: [
+      {
+        data: baseData,
+        backgroundColor: ['#4F46E5', '#60A5FA', '#34D399'],
+      },
+    ],
+  }
+})
+
 const fetchProjectFinancials = async () => {
   try {
-    const [projectRes, expensesRes, laborRes] = await Promise.all([
+    const [projectRes, completedValueRes, expensesRes, laborRes] = await Promise.all([
       fetch(`/api/projects/${props.projectId}`),
+      fetch(`/api/projects/${props.projectId}/completed-value`),
       fetch(`/api/projects/${props.projectId}/expenses/summary`),
       fetch(`/api/projects/${props.projectId}/labor/summary`),
     ])
 
     const project = await projectRes.json()
+    const completedData = await completedValueRes.json()
     const expenseData = await expensesRes.json()
     const laborData = await laborRes.json()
 
     contractValue.value = project.contractValue
+    completedValue.value = completedData.completedValue
     expenses.value = expenseData
 
-    // Handle unionCustomRates as an object
     const customRatesArray = Object.entries(laborData.unionCustomRates || {}).map(
       ([name, amount]) => ({
         name,
@@ -144,24 +179,6 @@ const fetchMonthlyData = async () => {
   }
 }
 
-const pieChartData = computed(() => {
-  const baseData = [
-    Number(laborCosts.value.unionBase) || 0,
-    totalBenefitsPay.value, // Combined benefits and custom rates
-    Number(laborCosts.value.local) || 0,
-  ]
-
-  return {
-    labels: ['Union Base Labor', 'Union Benefits & Custom Rates', 'Local Labor'],
-    datasets: [
-      {
-        data: baseData,
-        backgroundColor: ['#4F46E5', '#60A5FA', '#34D399'],
-      },
-    ],
-  }
-})
-
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -185,6 +202,20 @@ onMounted(() => {
       <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
         <h3 class="text-sm font-medium text-gray-500">Contract Value</h3>
         <p class="mt-2 text-2xl font-bold">{{ formatCurrency(contractValue) }}</p>
+        <div class="mt-2 text-sm text-gray-500">
+          <div class="flex justify-between">
+            <span>Completed:</span>
+            <span>{{ formatCurrency(completedValue) }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Remaining:</span>
+            <span>{{ formatCurrency(contractValue - completedValue) }}</span>
+          </div>
+          <div class="flex justify-between mt-1">
+            <span>% Complete:</span>
+            <span>{{ ((completedValue / contractValue) * 100).toFixed(1) }}%</span>
+          </div>
+        </div>
       </div>
 
       <!-- Total Expenses -->
@@ -247,24 +278,28 @@ onMounted(() => {
 
       <!-- Profit Analysis -->
       <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 class="text-sm font-medium text-gray-500">Profit Analysis</h3>
+        <h3 class="text-sm font-medium text-gray-500">Current Profit Analysis</h3>
         <p
           class="mt-2 text-2xl font-bold"
           :class="{
-            'text-green-600': projectedProfit > 0,
-            'text-red-600': projectedProfit < 0,
+            'text-green-600': currentProfit > 0,
+            'text-red-600': currentProfit < 0,
           }"
         >
-          {{ formatCurrency(projectedProfit) }}
+          {{ formatCurrency(currentProfit) }}
         </p>
         <div class="mt-2 space-y-1 text-sm">
           <div class="flex justify-between">
-            <span class="text-gray-500">Total Cost:</span>
+            <span class="text-gray-500">Current Completed Value:</span>
+            <span>{{ formatCurrency(completedValue) }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Current Total Expenses:</span>
             <span>{{ formatCurrency(totalCost) }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-gray-500">Margin:</span>
-            <span>{{ profitMargin.toFixed(1) }}%</span>
+            <span class="text-gray-500">Current Margin:</span>
+            <span>{{ currentProfitMargin.toFixed(1) }}%</span>
           </div>
         </div>
       </div>
@@ -303,7 +338,7 @@ onMounted(() => {
               },
               {
                 label: 'Labor',
-                data: monthlyData.map((d) => d.labor),
+                data: monthlyData.map((d) => d.labor.total),
                 borderColor: '#60A5FA',
                 fill: false,
               },

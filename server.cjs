@@ -2197,3 +2197,47 @@ app.get('/api/clients/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch client' })
   }
 })
+
+app.get('/api/projects/:id/completed-value', async (req, res) => {
+  try {
+    const scopes = await prisma.scope.findMany({
+      where: { projectId: req.params.id },
+      include: {
+        subScopes: {
+          include: {
+            quantities: {
+              include: {
+                workItem: {
+                  include: {
+                    projects: {
+                      where: { projectId: req.params.id },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const completedValue = scopes.reduce(
+      (total, scope) =>
+        total +
+        scope.subScopes.reduce(
+          (scopeTotal, subScope) =>
+            scopeTotal +
+            subScope.quantities.reduce((subScopeTotal, qty) => {
+              const projectPrice = qty.workItem.projects[0]?.unitPrice || qty.workItem.unitPrice
+              return subScopeTotal + qty.completed * projectPrice
+            }, 0),
+          0,
+        ),
+      0,
+    )
+
+    res.json({ completedValue })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch completed value' })
+  }
+})
