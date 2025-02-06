@@ -182,6 +182,7 @@ model TimeEntry {
   updatedAt     DateTime      @updatedAt
   paymentStatus PaymentStatus @default(PENDING)
   payment       Payment?      @relation(fields: [paymentId], references: [id])
+  source        TimeEntrySource @default(APP)
   paymentId     Int?
 
   @@index([employeeId, date])
@@ -204,6 +205,19 @@ model Payment {
   updatedAt   DateTime @updatedAt
 
   @@index([employeeId, weekNumber, yearNumber])
+}
+
+model SyncLog {
+  id            Int       @id @default(autoincrement())
+  startTime     DateTime
+  endTime       DateTime?
+  status        SyncStatus
+  rowsRead      Int       @default(0)
+  rowsSuccess   Int       @default(0) 
+  rowsError     Int       @default(0)
+  errors        Json?     // Array of {row: number, message: string}
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Expense {
@@ -232,6 +246,37 @@ model User {
   lastLogin     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model Material {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  unit          String
+  category      String   // Material or Tool
+  type          String   // Subcategory like "Paintbrush", "Cement", etc.
+  priceHistory  VendorPrice[]
+}
+
+model Vendor {
+  id            String   @id @default(uuid())
+  name          String
+  contactInfo   String?
+  address       String?
+  priceHistory  VendorPrice[]
+}
+
+model VendorPrice {
+  id          String   @id @default(uuid())
+  materialId  String
+  vendorId    String
+  price       Float
+  date        DateTime @default(now())
+  material    Material @relation(fields: [materialId], references: [id])
+  vendor      Vendor   @relation(fields: [vendorId], references: [id])
+
+  @@index([materialId, date])
+  @@index([vendorId, date])
 }
 
 enum Role {
@@ -279,4 +324,15 @@ enum PaymentStatus {
   PROCESSING
   PAID
   CANCELLED
+}
+
+enum TimeEntrySource {
+  APP
+  SHEET
+}
+
+enum SyncStatus {
+  IN_PROGRESS
+  SUCCESS  
+  ERROR
 }

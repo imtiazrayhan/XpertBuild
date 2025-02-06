@@ -8,6 +8,7 @@ import TimesheetPage from '../views/TimesheetPage.vue'
 import ProjectDetailsView from '../views/ProjectDetailsView.vue'
 import ScopeView from '../components/ScopeView.vue'
 import ClientsPage from '../views/ClientsPage.vue'
+import MaterialsPage from '../views/MaterialsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -56,6 +57,11 @@ const router = createRouter({
       path: '/clients',
       name: 'clients',
       component: ClientsPage,
+    },
+    {
+      path: '/materials',
+      name: 'materials',
+      component: MaterialsPage,
     },
   ],
 })

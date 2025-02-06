@@ -2241,3 +2241,109 @@ app.get('/api/projects/:id/completed-value', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch completed value' })
   }
 })
+
+// Materials endpoints
+app.get('/api/materials', async (req, res) => {
+  try {
+    const materials = await prisma.material.findMany({
+      include: {
+        priceHistory: {
+          include: {
+            vendor: true,
+          },
+          orderBy: {
+            date: 'desc',
+          },
+        },
+      },
+    })
+    res.json(materials)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch materials' })
+  }
+})
+
+app.post('/api/materials', async (req, res) => {
+  try {
+    const material = await prisma.material.create({
+      data: {
+        name: req.body.name,
+        description: req.body.description,
+        unit: req.body.unit,
+        category: req.body.category,
+        type: req.body.type,
+      },
+    })
+    res.json(material)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create material' })
+  }
+})
+
+// Vendors endpoints
+app.get('/api/vendors', async (req, res) => {
+  try {
+    const vendors = await prisma.vendor.findMany({
+      include: {
+        priceHistory: true,
+      },
+    })
+    res.json(vendors)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch vendors' })
+  }
+})
+
+app.post('/api/vendors', async (req, res) => {
+  try {
+    const vendor = await prisma.vendor.create({
+      data: {
+        name: req.body.name,
+        contactInfo: req.body.contactInfo,
+        address: req.body.address,
+      },
+    })
+    res.json(vendor)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create vendor' })
+  }
+})
+
+// Price history endpoints
+app.post('/api/prices', async (req, res) => {
+  try {
+    const price = await prisma.vendorPrice.create({
+      data: {
+        materialId: req.body.materialId,
+        vendorId: req.body.vendorId,
+        price: req.body.price,
+        date: new Date(),
+      },
+      include: {
+        vendor: true,
+      },
+    })
+    res.json(price)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add price' })
+  }
+})
+
+app.get('/api/materials/:id/prices', async (req, res) => {
+  try {
+    const prices = await prisma.vendorPrice.findMany({
+      where: {
+        materialId: req.params.id,
+      },
+      include: {
+        vendor: true,
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    })
+    res.json(prices)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch prices' })
+  }
+})

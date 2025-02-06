@@ -10,6 +10,7 @@ import {
   UserGroupIcon,
   ChevronDownIcon,
   InformationCircleIcon,
+  ShoppingCartIcon,
 } from '@heroicons/vue/24/outline'
 import { icons, User } from 'lucide-react'
 
@@ -20,6 +21,7 @@ const navItems = [
   { name: 'Dashboard', icon: HomeIcon, route: '/' },
   { name: 'Projects', icon: BriefcaseIcon, route: '/projects' },
   { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
+  { name: 'Materials', icon: ShoppingCartIcon, route: '/materials' },
   { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
   {
     name: 'Employees',
