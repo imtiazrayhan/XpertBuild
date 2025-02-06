@@ -2347,3 +2347,33 @@ app.get('/api/materials/:id/prices', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch prices' })
   }
 })
+
+app.delete('/api/vendors/:id', async (req, res) => {
+  try {
+    await prisma.vendorPrice.deleteMany({
+      where: { vendorId: req.params.id },
+    })
+    await prisma.vendor.delete({
+      where: { id: req.params.id },
+    })
+    res.json({ message: 'Vendor deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete vendor' })
+  }
+})
+
+app.put('/api/vendors/:id', async (req, res) => {
+  try {
+    const vendor = await prisma.vendor.update({
+      where: { id: req.params.id },
+      data: {
+        name: req.body.name,
+        contactInfo: req.body.contactInfo,
+        address: req.body.address,
+      },
+    })
+    res.json(vendor)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update vendor' })
+  }
+})
