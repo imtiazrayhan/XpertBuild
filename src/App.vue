@@ -23,6 +23,7 @@ const navItems = [
   { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
   { name: 'Materials & Tools', icon: ShoppingCartIcon, route: '/materials' },
   { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
+  { name: 'Sync', icon: Squares2X2Icon, route: '/sync' },
   {
     name: 'Employees',
     icon: UsersIcon,

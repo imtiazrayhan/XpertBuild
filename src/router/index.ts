@@ -9,6 +9,7 @@ import ProjectDetailsView from '../views/ProjectDetailsView.vue'
 import ScopeView from '../components/ScopeView.vue'
 import ClientsPage from '../views/ClientsPage.vue'
 import MaterialsPage from '../views/MaterialsPage.vue'
+import SyncManagement from '../views/SyncManagement.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -62,6 +63,11 @@ const router = createRouter({
       path: '/materials',
       name: 'materials',
       component: MaterialsPage,
+    },
+    {
+      path: '/sync',
+      name: 'sync',
+      component: SyncManagement,
     },
   ],
 })

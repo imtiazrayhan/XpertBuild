@@ -1,6 +1,8 @@
 const express = require('express')
 const { PrismaClient } = require('@prisma/client')
 
+const syncService = require('./services/syncService.cjs')
+
 const app = express()
 const prisma = new PrismaClient()
 const port = 3000
@@ -2375,5 +2377,51 @@ app.put('/api/vendors/:id', async (req, res) => {
     res.json(vendor)
   } catch (error) {
     res.status(500).json({ error: 'Failed to update vendor' })
+  }
+})
+
+// Get latest sync status
+app.get('/api/sync/status', async (req, res) => {
+  try {
+    const latestSync = await prisma.syncLog.findFirst({
+      orderBy: { startTime: 'desc' },
+    })
+    res.json(latestSync)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch sync status' })
+  }
+})
+
+// Get sync history
+app.get('/api/sync/logs', async (req, res) => {
+  try {
+    const logs = await prisma.syncLog.findMany({
+      orderBy: { startTime: 'desc' },
+      take: 50,
+    })
+    res.json(logs)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch sync logs' })
+  }
+})
+
+app.post('/api/sync/trigger', async (req, res) => {
+  try {
+    const syncLog = await prisma.syncLog.create({
+      data: {
+        startTime: new Date(),
+        status: 'IN_PROGRESS',
+        rowsRead: 0,
+        rowsSuccess: 0,
+        rowsError: 0,
+      },
+    })
+
+    // Start sync process
+    syncService.syncTimesheet(syncLog.id).catch((error) => console.error('Sync failed:', error))
+
+    res.json({ message: 'Sync started', syncId: syncLog.id })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to start sync' })
   }
 })
