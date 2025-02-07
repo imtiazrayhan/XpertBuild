@@ -21,7 +21,7 @@ const navItems = [
   { name: 'Dashboard', icon: HomeIcon, route: '/' },
   { name: 'Projects', icon: BriefcaseIcon, route: '/projects' },
   { name: 'Expenses', icon: BanknotesIcon, route: '/expenses' },
-  { name: 'Materials', icon: ShoppingCartIcon, route: '/materials' },
+  { name: 'Materials & Tools', icon: ShoppingCartIcon, route: '/materials' },
   { name: 'Timesheet', icon: ClockIcon, route: '/timesheet' },
   {
     name: 'Employees',
