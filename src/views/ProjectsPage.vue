@@ -38,6 +38,24 @@ const showDeleteConfirmation = ref(false)
 const selectedProject = ref<Project | null>(null)
 const statuses = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD']
 
+const settings = ref({
+  defaultContractType: 'DIRECT' as 'DIRECT' | 'SUBCONTRACT',
+  defaultProjectStatus: 'PLANNING' as 'PLANNING' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD',
+})
+
+const fetchSettings = async () => {
+  try {
+    const response = await fetch('/api/settings')
+    const data = await response.json()
+    settings.value = {
+      defaultContractType: data.defaultContractType,
+      defaultProjectStatus: data.defaultProjectStatus,
+    }
+  } catch (error) {
+    console.error('Error fetching settings:', error)
+  }
+}
+
 const editProject = ref<Project>({
   id: '',
   name: '',
@@ -133,10 +151,10 @@ const resetNewProject = () => {
       name: '',
       code: '',
     },
-    contractType: 'DIRECT',
+    contractType: settings.value.defaultContractType,
     generalContractor: '',
     startDate: '',
-    status: 'PLANNING',
+    status: settings.value.defaultProjectStatus,
     address: '',
   }
 }
@@ -195,23 +213,9 @@ const formatCurrency = (value: number) => {
 }
 
 const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-US')
-}
-
-const openEditModal = (project: Project) => {
-  selectedProject.value = project
-  editProject.value = {
-    id: project.id,
-    name: project.name,
-    contractValue: project.contractValue,
-    clientId: project.clientId,
-    contractType: project.contractType,
-    generalContractor: project.generalContractor ?? '',
-    startDate: project.startDate.split('T')[0],
-    status: project.status,
-    address: project.address,
-  }
-  showEditProjectModal.value = true
+  const d = new Date(dateString)
+  d.setUTCHours(12, 0, 0, 0)
+  return d.toLocaleDateString('en-US')
 }
 
 const openDeleteConfirmation = (project: Project) => {
@@ -259,9 +263,11 @@ const deleteProject = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchSettings()
   fetchProjects()
   fetchClients()
+  resetNewProject() // Reset after settings are loaded
 })
 </script>
 
