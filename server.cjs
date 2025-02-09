@@ -45,10 +45,10 @@ app.post('/api/projects', async (req, res) => {
     const project = await prisma.project.create({
       data: {
         name: req.body.name,
-        contractValue: req.body.contractValue,
-        client: req.body.client,
+        contractValue: parseFloat(req.body.contractValue),
+        clientId: req.body.clientId, // Fixed: Use clientId instead of client
         contractType: req.body.contractType,
-        generalContractor: req.body.generalContractor, // New field
+        generalContractor: req.body.generalContractor,
         startDate: new Date(req.body.startDate),
         status: req.body.status,
         address: req.body.address,
@@ -56,6 +56,7 @@ app.post('/api/projects', async (req, res) => {
     })
     res.json(project)
   } catch (error) {
+    console.error('Project creation error:', error)
     res.status(500).json({ error: error.message })
   }
 })
@@ -72,7 +73,7 @@ app.put('/api/projects/:id', async (req, res) => {
       data: {
         name: projectData.name,
         contractValue: projectData.contractValue,
-        client: projectData.client,
+        clientId: projectData.clientId,
         contractType: projectData.contractType,
         generalContractor: projectData.generalContractor,
         startDate: new Date(projectData.startDate),

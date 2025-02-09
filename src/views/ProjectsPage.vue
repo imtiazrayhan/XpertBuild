@@ -7,7 +7,12 @@ interface Project {
   id: string
   name: string
   contractValue: number
-  client: string
+  clientId: string
+  client: {
+    id: string // Add this
+    name: string
+    code: string
+  }
   contractType: 'DIRECT' | 'SUBCONTRACT'
   generalContractor?: string
   startDate: string
@@ -37,7 +42,12 @@ const editProject = ref<Project>({
   id: '',
   name: '',
   contractValue: 0,
-  client: '',
+  clientId: '',
+  client: {
+    id: '',
+    name: '',
+    code: '',
+  },
   contractType: 'DIRECT',
   generalContractor: '',
   startDate: '',
@@ -48,7 +58,12 @@ const editProject = ref<Project>({
 const newProject = ref({
   name: '',
   contractValue: 0,
-  client: '',
+  clientId: '',
+  client: {
+    id: '',
+    name: '',
+    code: '',
+  },
   contractType: 'DIRECT',
   generalContractor: '',
   startDate: '',
@@ -64,7 +79,15 @@ const newClient = ref({
 const fetchProjects = async () => {
   try {
     const response = await fetch('/api/projects')
-    projects.value = await response.json()
+    const data = await response.json()
+    projects.value = data.map((p) => ({
+      ...p,
+      client: {
+        id: p.clientId, // Ensure client.id is set
+        name: p.client?.name,
+        code: p.client?.code,
+      },
+    }))
   } catch (error) {
     console.error('Error fetching projects:', error)
   }
@@ -104,7 +127,12 @@ const resetNewProject = () => {
   newProject.value = {
     name: '',
     contractValue: 0,
-    client: '',
+    clientId: '',
+    client: {
+      id: '',
+      name: '',
+      code: '',
+    },
     contractType: 'DIRECT',
     generalContractor: '',
     startDate: '',
@@ -142,7 +170,8 @@ const createClient = async () => {
     if (response.ok) {
       const client = await response.json()
       clients.value.push(client)
-      newProject.value.client = client.id
+      newProject.value.clientId = client.id
+      editProject.value.clientId = client.id
       showClientModal.value = false
       resetClientForm()
     }
@@ -170,7 +199,18 @@ const formatDate = (dateString: string) => {
 }
 
 const openEditModal = (project: Project) => {
-  editProject.value = { ...project }
+  selectedProject.value = project
+  editProject.value = {
+    id: project.id,
+    name: project.name,
+    contractValue: project.contractValue,
+    clientId: project.clientId,
+    contractType: project.contractType,
+    generalContractor: project.generalContractor ?? '',
+    startDate: project.startDate.split('T')[0],
+    status: project.status,
+    address: project.address,
+  }
   showEditProjectModal.value = true
 }
 
@@ -393,6 +433,7 @@ onMounted(() => {
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
     >
       <div class="bg-white rounded-lg p-6 w-full max-w-2xl">
+        <!-- At the start of edit modal -->
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-bold">Edit Project</h2>
           <button @click="showEditProjectModal = false" class="text-gray-500 hover:text-gray-700">
@@ -424,13 +465,13 @@ onMounted(() => {
               <div class="flex-1">
                 <label class="block text-sm font-medium text-gray-700">Client</label>
                 <select
-                  v-model="newProject.client"
+                  v-model="newProject.clientId"
                   required
                   class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                 >
                   <option value="">Select Client</option>
                   <option v-for="client in clients" :key="client.id" :value="client.id">
-                    {{ client.name }} ({{ client.code }})
+                    {{ client.name }}
                   </option>
                 </select>
               </div>
@@ -581,13 +622,13 @@ onMounted(() => {
               <div class="flex-1">
                 <label class="block text-sm font-medium text-gray-700">Client</label>
                 <select
-                  v-model="newProject.client"
+                  v-model="newProject.clientId"
                   required
                   class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
                 >
                   <option value="">Select Client</option>
                   <option v-for="client in clients" :key="client.id" :value="client.id">
-                    {{ client.name }} ({{ client.code }})
+                    {{ client.name }}
                   </option>
                 </select>
               </div>
