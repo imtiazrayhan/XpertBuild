@@ -10,6 +10,7 @@ import ScopeView from '../components/ScopeView.vue'
 import ClientsPage from '../views/ClientsPage.vue'
 import MaterialsPage from '../views/MaterialsPage.vue'
 import SyncManagement from '../views/SyncManagement.vue'
+import SettingsPage from '../views/SettingsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -68,6 +69,11 @@ const router = createRouter({
       path: '/sync',
       name: 'sync',
       component: SyncManagement,
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: SettingsPage,
     },
   ],
 })

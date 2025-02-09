@@ -11,8 +11,9 @@ import {
   ChevronDownIcon,
   InformationCircleIcon,
   ShoppingCartIcon,
+  CogIcon,
 } from '@heroicons/vue/24/outline'
-import { icons, User } from 'lucide-react'
+import { Cog, icons, User } from 'lucide-react'
 
 const currentPage = ref('dashboard')
 const expandedMenus = ref<string[]>([])
@@ -33,6 +34,7 @@ const navItems = [
     ],
   },
   { name: 'Clients', icon: InformationCircleIcon, route: '/clients' },
+  { name: 'Settings', icon: CogIcon, route: '/settings' },
 ]
 
 const toggleMenu = (menuName: string) => {

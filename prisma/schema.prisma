@@ -279,6 +279,22 @@ model VendorPrice {
   @@index([vendorId, date])
 }
 
+model Settings {
+  id              Int       @id @default(1)  // Single row
+  companyName     String
+  businessHours   Json      // Store opening/closing times for each day
+  defaultCurrency String    @default("USD")
+  fiscalYearStart DateTime
+  fiscalYearEnd   DateTime
+  defaultContractType ContractType @default(DIRECT)
+  defaultProjectStatus ProjectStatus @default(PLANNING)
+  payrollBurden   Float     @default(0.2)  // 20% default
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("settings")
+}
+
 enum Role {
   ADMIN
   MANAGER

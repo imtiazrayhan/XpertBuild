@@ -2425,3 +2425,57 @@ app.post('/api/sync/trigger', async (req, res) => {
     res.status(500).json({ error: 'Failed to start sync' })
   }
 })
+
+// Get settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await prisma.settings.findFirst()
+    if (!settings) {
+      // Create default settings if none exist
+      return res.json(
+        await prisma.settings.create({
+          data: {
+            companyName: 'Company Name',
+            businessHours: {
+              monday: { open: '09:00', close: '17:00' },
+              tuesday: { open: '09:00', close: '17:00' },
+              wednesday: { open: '09:00', close: '17:00' },
+              thursday: { open: '09:00', close: '17:00' },
+              friday: { open: '09:00', close: '17:00' },
+              saturday: null,
+              sunday: null,
+            },
+            defaultCurrency: 'USD',
+            fiscalYearStart: new Date(new Date().getFullYear(), 0, 1), // Jan 1
+            fiscalYearEnd: new Date(new Date().getFullYear(), 11, 31), // Dec 31
+            payrollBurden: 0.2,
+          },
+        }),
+      )
+    }
+    res.json(settings)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch settings' })
+  }
+})
+
+// Update settings
+app.put('/api/settings', async (req, res) => {
+  try {
+    const data = {
+      ...req.body,
+      fiscalYearStart: new Date(req.body.fiscalYearStart),
+      fiscalYearEnd: new Date(req.body.fiscalYearEnd),
+    }
+
+    const settings = await prisma.settings.upsert({
+      where: { id: 1 },
+      update: data,
+      create: data,
+    })
+    res.json(settings)
+  } catch (error) {
+    console.error('Error updating settings:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
