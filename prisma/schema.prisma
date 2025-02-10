@@ -24,6 +24,7 @@ model Project {
   workItems     ProjectWorkItem[]
   expenses      Expense[]
   timeEntries TimeEntry[]
+  sheetConnections SheetConnection[]
 }
 
 model Client {
@@ -293,6 +294,19 @@ model Settings {
   updatedAt       DateTime  @updatedAt
 
   @@map("settings")
+}
+
+model SheetConnection {
+  id          String    @id @default(uuid())
+  project     Project   @relation(fields: [projectId], references: [id])
+  projectId   String
+  sheetId     String
+  range       String
+  lastSync    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId])
 }
 
 enum Role {

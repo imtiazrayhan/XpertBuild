@@ -2451,10 +2451,34 @@ app.get('/api/settings', async (req, res) => {
             fiscalYearEnd: new Date(new Date().getFullYear(), 11, 31), // Dec 31
             payrollBurden: 0.2,
           },
+          include: {
+            sheetConnections: {
+              include: {
+                project: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
         }),
       )
     }
-    res.json(settings)
+    // Include sheet connections with project info
+    const connections = await prisma.sheetConnection.findMany({
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    })
+    res.json({
+      ...settings,
+      sheetConnections: connections,
+    })
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch settings' })
   }
@@ -2478,5 +2502,88 @@ app.put('/api/settings', async (req, res) => {
   } catch (error) {
     console.error('Error updating settings:', error)
     res.status(500).json({ error: error.message })
+  }
+})
+
+// Add to server.cjs
+
+// Get all sheet connections
+app.get('/api/settings/sheets', async (req, res) => {
+  try {
+    const connections = await prisma.sheetConnection.findMany({
+      include: {
+        project: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    })
+    res.json(connections)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch sheet connections' })
+  }
+})
+
+// Create new sheet connection
+app.post('/api/settings/sheets', async (req, res) => {
+  try {
+    const connection = await prisma.sheetConnection.create({
+      data: {
+        projectId: req.body.projectId,
+        sheetId: req.body.sheetId,
+        range: req.body.range,
+      },
+    })
+    res.json(connection)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create sheet connection' })
+  }
+})
+
+// Update sheet connection
+app.put('/api/settings/sheets/:id', async (req, res) => {
+  try {
+    const connection = await prisma.sheetConnection.update({
+      where: { id: req.params.id },
+      data: {
+        projectId: req.body.projectId,
+        sheetId: req.body.sheetId,
+        range: req.body.range,
+      },
+    })
+    res.json(connection)
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update sheet connection' })
+  }
+})
+
+// Delete sheet connection
+app.delete('/api/settings/sheets/:id', async (req, res) => {
+  try {
+    await prisma.sheetConnection.delete({
+      where: { id: req.params.id },
+    })
+    res.json({ message: 'Connection deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete sheet connection' })
+  }
+})
+
+// Test sheet connection
+app.get('/api/settings/sheets/:id/test', async (req, res) => {
+  try {
+    const connection = await prisma.sheetConnection.findUnique({
+      where: { id: req.params.id },
+    })
+
+    if (!connection) {
+      return res.status(404).json({ error: 'Connection not found' })
+    }
+
+    const result = await sheetsService.testConnection(connection.sheetId, connection.range)
+    res.json({ success: result })
+  } catch (error) {
+    res.status(500).json({ error: 'Connection test failed' })
   }
 })

@@ -25,6 +25,7 @@ interface Settings {
   defaultContractType: 'DIRECT' | 'SUBCONTRACT'
   defaultProjectStatus: 'PLANNING' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD'
   payrollBurden: number
+  sheetConnections: SheetConnection[]
 }
 
 const settings = ref<Settings>({
@@ -44,6 +45,7 @@ const settings = ref<Settings>({
   defaultContractType: 'DIRECT',
   defaultProjectStatus: 'PLANNING',
   payrollBurden: 20,
+  sheetConnections: [],
 })
 
 const activeTab = ref('general')
@@ -58,6 +60,7 @@ const projectStatuses = ['PLANNING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD']
 const tabs = [
   { id: 'general', name: 'General Settings' },
   { id: 'projects', name: 'Project Settings' },
+  { id: 'sheets', name: 'Google Sheets Connection' },
 ]
 
 const fetchSettings = async () => {
@@ -119,7 +122,113 @@ const formatDay = (day: string) => {
   return day.charAt(0).toUpperCase() + day.slice(1)
 }
 
-onMounted(fetchSettings)
+// Add these interfaces
+interface Project {
+  id: string
+  name: string
+}
+
+interface SheetConnection {
+  id: string
+  projectId: string
+  sheetId: string
+  range: string
+  lastSync?: string
+  project?: {
+    name: string
+  }
+}
+
+// Add to existing refs
+const showConnectionModal = ref(false)
+const editingConnection = ref<SheetConnection | null>(null)
+const projects = ref<Project[]>([])
+
+const newConnection = ref({
+  projectId: '',
+  sheetId: '',
+  range: '',
+})
+
+// Add these methods
+const fetchProjects = async () => {
+  try {
+    const response = await fetch('/api/projects')
+    projects.value = await response.json()
+  } catch (error) {
+    console.error('Error fetching projects:', error)
+  }
+}
+
+const editConnection = (connection: SheetConnection) => {
+  editingConnection.value = connection
+  newConnection.value = {
+    projectId: connection.projectId,
+    sheetId: connection.sheetId,
+    range: connection.range,
+  }
+  showConnectionModal.value = true
+}
+
+const saveConnection = async () => {
+  try {
+    const url = editingConnection.value
+      ? `/api/settings/sheets/${editingConnection.value.id}`
+      : '/api/settings/sheets'
+
+    const method = editingConnection.value ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newConnection.value),
+    })
+
+    if (response.ok) {
+      showConnectionModal.value = false
+      await fetchSettings()
+      editingConnection.value = null
+      newConnection.value = {
+        projectId: '',
+        sheetId: '',
+        range: '',
+      }
+    }
+  } catch (error) {
+    console.error('Error saving sheet connection:', error)
+  }
+}
+
+const deleteConnection = async (id: string) => {
+  if (!confirm('Are you sure you want to delete this connection?')) return
+
+  try {
+    const response = await fetch(`/api/settings/sheets/${id}`, {
+      method: 'DELETE',
+    })
+
+    if (response.ok) {
+      await fetchSettings()
+    }
+  } catch (error) {
+    console.error('Error deleting connection:', error)
+  }
+}
+
+const testConnection = async (id: string) => {
+  try {
+    const response = await fetch(`/api/settings/sheets/${id}/test`)
+    const result = await response.json()
+    alert(result.success ? 'Connection successful!' : 'Connection failed!')
+  } catch (error) {
+    console.error('Error testing connection:', error)
+    alert('Connection test failed')
+  }
+}
+onMounted(() => {
+  fetchSettings()
+  fetchProjects() // Add this line
+})
 </script>
 
 <template>
@@ -282,6 +391,140 @@ onMounted(fetchSettings)
             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
           />
         </div>
+      </div>
+    </div>
+
+    <!-- Google Sheets Integration Tab -->
+    <div v-if="activeTab === 'sheets'" class="bg-white rounded-lg shadow-sm p-6">
+      <div class="space-y-6">
+        <!-- Connection Status -->
+        <div class="flex justify-between items-center">
+          <div>
+            <h3 class="text-lg font-medium">Google Sheets Integration</h3>
+            <p class="text-sm text-gray-500">
+              Connect projects to Google Sheets for timesheet imports
+            </p>
+          </div>
+          <button
+            @click="showConnectionModal = true"
+            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            + Add Connection
+          </button>
+        </div>
+
+        <!-- Connections Table -->
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Project
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Sheet ID
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Range</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                Last Sync
+              </th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            <tr v-for="conn in settings.sheetConnections" :key="conn.id">
+              <td class="px-6 py-4">{{ conn.project?.name }}</td>
+              <td class="px-6 py-4">{{ conn.sheetId }}</td>
+              <td class="px-6 py-4">{{ conn.range }}</td>
+              <td class="px-6 py-4">{{ conn.lastSync ? formatDate(conn.lastSync) : 'Never' }}</td>
+              <td class="px-6 py-4 text-right">
+                <div class="flex justify-end space-x-3">
+                  <button @click="editConnection(conn)" class="text-gray-600 hover:text-gray-900">
+                    Edit
+                  </button>
+                  <button
+                    @click="deleteConnection(conn.id)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Connection Modal -->
+    <div
+      v-if="showConnectionModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+    >
+      <div class="bg-white rounded-lg p-6 w-full max-w-lg">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-xl font-bold">
+            {{ editingConnection ? 'Edit' : 'New' }} Sheet Connection
+          </h2>
+          <button @click="showConnectionModal = false" class="text-gray-500 hover:text-gray-700">
+            <XMarkIcon class="w-6 h-6" />
+          </button>
+        </div>
+
+        <form @submit.prevent="saveConnection" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Project</label>
+            <select
+              v-model="newConnection.projectId"
+              required
+              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+            >
+              <option value="">Select Project</option>
+              <option v-for="project in projects" :key="project.id" :value="project.id">
+                {{ project.name }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Sheet ID</label>
+            <input
+              v-model="newConnection.sheetId"
+              type="text"
+              required
+              placeholder="From sheet URL"
+              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Range</label>
+            <input
+              v-model="newConnection.range"
+              type="text"
+              required
+              placeholder="e.g. Sheet1!A2:F"
+              class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
+            />
+          </div>
+
+          <div class="flex justify-end space-x-3">
+            <button
+              type="button"
+              @click="showConnectionModal = false"
+              class="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              {{ editingConnection ? 'Save Changes' : 'Add Connection' }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
