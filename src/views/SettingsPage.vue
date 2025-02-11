@@ -225,6 +225,13 @@ const testConnection = async (id: string) => {
     alert('Connection test failed')
   }
 }
+
+const formatDate = (dateString: string) => {
+  const d = new Date(dateString)
+  d.setUTCHours(12, 0, 0, 0)
+  return d.toLocaleDateString('en-US')
+}
+
 onMounted(() => {
   fetchSettings()
   fetchProjects() // Add this line

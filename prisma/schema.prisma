@@ -25,6 +25,7 @@ model Project {
   expenses      Expense[]
   timeEntries TimeEntry[]
   sheetConnections SheetConnection[]
+  syncLog SyncLog[]
 }
 
 model Client {
@@ -216,7 +217,9 @@ model SyncLog {
   rowsRead      Int       @default(0)
   rowsSuccess   Int       @default(0) 
   rowsError     Int       @default(0)
-  errors        Json?     // Array of {row: number, message: string}
+  errors        Json?     
+  projectId     String?   // Add this field
+  project       Project?  @relation(fields: [projectId], references: [id])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }

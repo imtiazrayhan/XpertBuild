@@ -32,6 +32,22 @@ class SheetsService {
     }
   }
 
+  async testConnection(sheetId, range) {
+    try {
+      await this.initialize()
+
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range,
+      })
+
+      return response.data.values && response.data.values.length > 0
+    } catch (error) {
+      console.error('Test connection failed:', error)
+      return false
+    }
+  }
+
   async readTimesheet(spreadsheetId, range) {
     if (!this.sheets) {
       throw new Error('Sheets service not initialized')

@@ -2383,8 +2383,12 @@ app.put('/api/vendors/:id', async (req, res) => {
 
 // Get latest sync status
 app.get('/api/sync/status', async (req, res) => {
+  const { projectId } = req.query
+  const where = projectId ? { projectId } : {}
+
   try {
     const latestSync = await prisma.syncLog.findFirst({
+      where,
       orderBy: { startTime: 'desc' },
     })
     res.json(latestSync)
@@ -2395,8 +2399,12 @@ app.get('/api/sync/status', async (req, res) => {
 
 // Get sync history
 app.get('/api/sync/logs', async (req, res) => {
+  const { projectId } = req.query
+  const where = projectId ? { projectId } : {}
+
   try {
     const logs = await prisma.syncLog.findMany({
+      where,
       orderBy: { startTime: 'desc' },
       take: 50,
     })
@@ -2408,6 +2416,8 @@ app.get('/api/sync/logs', async (req, res) => {
 
 app.post('/api/sync/trigger', async (req, res) => {
   try {
+    const { projectId } = req.body
+
     const syncLog = await prisma.syncLog.create({
       data: {
         startTime: new Date(),
@@ -2415,11 +2425,13 @@ app.post('/api/sync/trigger', async (req, res) => {
         rowsRead: 0,
         rowsSuccess: 0,
         rowsError: 0,
+        projectId,
       },
     })
 
-    // Start sync process
-    syncService.syncTimesheet(syncLog.id).catch((error) => console.error('Sync failed:', error))
+    syncService
+      .syncTimesheet(syncLog.id, projectId)
+      .catch((error) => console.error('Sync failed:', error))
 
     res.json({ message: 'Sync started', syncId: syncLog.id })
   } catch (error) {
@@ -2571,6 +2583,7 @@ app.delete('/api/settings/sheets/:id', async (req, res) => {
 })
 
 // Test sheet connection
+// Update server.cjs endpoint
 app.get('/api/settings/sheets/:id/test', async (req, res) => {
   try {
     const connection = await prisma.sheetConnection.findUnique({
@@ -2581,9 +2594,10 @@ app.get('/api/settings/sheets/:id/test', async (req, res) => {
       return res.status(404).json({ error: 'Connection not found' })
     }
 
-    const result = await sheetsService.testConnection(connection.sheetId, connection.range)
-    res.json({ success: result })
+    const success = await sheetsService.testConnection(connection.sheetId, connection.range)
+    res.json({ success })
   } catch (error) {
-    res.status(500).json({ error: 'Connection test failed' })
+    console.error('Connection test error:', error)
+    res.status(500).json({ error: 'Connection test failed', details: error.message })
   }
 })
