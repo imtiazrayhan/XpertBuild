@@ -186,10 +186,14 @@ model TimeEntry {
   payment       Payment?      @relation(fields: [paymentId], references: [id])
   source        TimeEntrySource @default(APP)
   paymentId     Int?
-
+  sourceRow     Int?          // Add this to track sheet row number
+  sourceHash    String?       // Add this to detect changes
+  
+  @@unique([employeeId, date, projectId, source]) // Prevent duplicates
   @@index([employeeId, date])
   @@index([projectId, date])
   @@index([weekNumber, yearNumber])
+  @@index([sourceHash])
 }
 
 model Payment {

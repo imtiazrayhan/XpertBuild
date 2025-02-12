@@ -1,7 +1,7 @@
 <!-- SettingsPage.vue -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, TrashIcon, PencilIcon } from '@heroicons/vue/24/outline'
 
 interface BusinessHours {
   open: string
@@ -25,7 +25,6 @@ interface Settings {
   defaultContractType: 'DIRECT' | 'SUBCONTRACT'
   defaultProjectStatus: 'PLANNING' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD'
   payrollBurden: number
-  sheetConnections: SheetConnection[]
 }
 
 const settings = ref<Settings>({
@@ -45,7 +44,6 @@ const settings = ref<Settings>({
   defaultContractType: 'DIRECT',
   defaultProjectStatus: 'PLANNING',
   payrollBurden: 20,
-  sheetConnections: [],
 })
 
 const activeTab = ref('general')
@@ -68,24 +66,29 @@ const fetchSettings = async () => {
     const response = await fetch('/api/settings')
     const data = await response.json()
 
-    data.fiscalYearStart = new Date(data.fiscalYearStart).toISOString().split('T')[0]
-    data.fiscalYearEnd = new Date(data.fiscalYearEnd).toISOString().split('T')[0]
-    data.payrollBurden = data.payrollBurden * 100
+    // Format dates for ISO string conversion
+    const start = new Date(data.fiscalYearStart)
+    const end = new Date(data.fiscalYearEnd)
+    start.setUTCHours(12, 0, 0, 0)
+    end.setUTCHours(12, 0, 0, 0)
 
-    settings.value = data
+    settings.value = {
+      ...data,
+      fiscalYearStart: start.toISOString().split('T')[0],
+      fiscalYearEnd: end.toISOString().split('T')[0],
+    }
   } catch (error) {
     console.error('Error fetching settings:', error)
   }
 }
 
+// Inside <script setup>
 const saveSettings = async () => {
   try {
     isSaving.value = true
 
-    const settingsData = {
-      ...settings.value,
-      payrollBurden: settings.value.payrollBurden / 100,
-    }
+    // Remove sheetConnections before sending
+    const settingsData = { ...settings.value }
 
     const response = await fetch('/api/settings', {
       method: 'PUT',
@@ -143,6 +146,10 @@ interface SheetConnection {
 const showConnectionModal = ref(false)
 const editingConnection = ref<SheetConnection | null>(null)
 const projects = ref<Project[]>([])
+const connections = ref<SheetConnection[]>([])
+const syncHistories = ref<Record<string, SyncLog[]>>({})
+const showErrorDetails = ref<Record<string, boolean>>({})
+const isSyncing = ref<Record<string, boolean>>({})
 
 const newConnection = ref({
   projectId: '',
@@ -157,6 +164,34 @@ const fetchProjects = async () => {
     projects.value = await response.json()
   } catch (error) {
     console.error('Error fetching projects:', error)
+  }
+}
+
+const fetchSheetConnections = async () => {
+  try {
+    const response = await fetch('/api/settings/sheets')
+    const data = await response.json()
+    connections.value = data
+
+    // Update states for each connection
+    connections.value.forEach((conn) => {
+      showErrorDetails.value[conn.projectId] = false
+      isSyncing.value[conn.projectId] = false
+    })
+
+    // Fetch sync history for each connection
+    await Promise.all(connections.value.map((conn) => fetchSyncHistory(conn.projectId)))
+  } catch (error) {
+    console.error('Error fetching sheet connections:', error)
+  }
+}
+
+const fetchSyncHistory = async (projectId: string) => {
+  try {
+    const response = await fetch(`/api/sync/logs?projectId=${projectId}`)
+    syncHistories.value[projectId] = await response.json()
+  } catch (error) {
+    console.error('Error fetching sync history:', error)
   }
 }
 
@@ -234,7 +269,8 @@ const formatDate = (dateString: string) => {
 
 onMounted(() => {
   fetchSettings()
-  fetchProjects() // Add this line
+  fetchProjects()
+  fetchSheetConnections()
 })
 </script>
 
@@ -405,13 +441,8 @@ onMounted(() => {
     <div v-if="activeTab === 'sheets'" class="bg-white rounded-lg shadow-sm p-6">
       <div class="space-y-6">
         <!-- Connection Status -->
-        <div class="flex justify-between items-center">
-          <div>
-            <h3 class="text-lg font-medium">Google Sheets Integration</h3>
-            <p class="text-sm text-gray-500">
-              Connect projects to Google Sheets for timesheet imports
-            </p>
-          </div>
+        <div class="flex justify-between items-center p-6 border-b">
+          <h3 class="text-lg font-medium">Sheet Connections</h3>
           <button
             @click="showConnectionModal = true"
             class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
@@ -440,21 +471,21 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200">
-            <tr v-for="conn in settings.sheetConnections" :key="conn.id">
-              <td class="px-6 py-4">{{ conn.project?.name }}</td>
+            <tr v-for="conn in connections" :key="conn.id">
+              <td class="px-6 py-4">{{ conn.project.name }}</td>
               <td class="px-6 py-4">{{ conn.sheetId }}</td>
               <td class="px-6 py-4">{{ conn.range }}</td>
               <td class="px-6 py-4">{{ conn.lastSync ? formatDate(conn.lastSync) : 'Never' }}</td>
-              <td class="px-6 py-4 text-right">
+              <td class="px-6 py-4">
                 <div class="flex justify-end space-x-3">
                   <button @click="editConnection(conn)" class="text-gray-600 hover:text-gray-900">
-                    Edit
+                    <PencilIcon class="w-5 h-5" />
                   </button>
                   <button
                     @click="deleteConnection(conn.id)"
                     class="text-red-600 hover:text-red-900"
                   >
-                    Delete
+                    <TrashIcon class="w-5 h-5" />
                   </button>
                 </div>
               </td>

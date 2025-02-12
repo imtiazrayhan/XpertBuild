@@ -1,10 +1,17 @@
 const { PrismaClient } = require('@prisma/client')
 const sheetsService = require('./sheetsService.cjs')
+const crypto = require('crypto')
 
 const prisma = new PrismaClient()
 const batchSize = 50
 
 class SyncService {
+  generateRowHash(entry) {
+    // Create hash of relevant fields to detect changes
+    const content = `${entry.date.toISOString()}-${entry.regularHours}-${entry.overtimeHours}-${entry.ssn}-${entry.unionClass}`
+    return crypto.createHash('md5').update(content).digest('hex')
+  }
+
   async syncTimesheet(syncLogId, projectId) {
     try {
       console.log('Starting sync process for project:', projectId)
@@ -75,40 +82,60 @@ class SyncService {
     for (let [index, row] of rows.entries()) {
       try {
         const entry = sheetsService.parseTimesheetRow(row)
-
-        // Normalize date
         entry.date.setUTCHours(12, 0, 0, 0)
 
-        // Calculate week info
-        const weekDate = new Date(entry.date)
-        weekDate.setDate(weekDate.getDate() + 4 - (weekDate.getDay() || 7))
-        const yearStart = new Date(weekDate.getFullYear(), 0, 1)
-        const weekNumber = Math.ceil(
-          ((weekDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-        )
-        const yearNumber = entry.date.getFullYear()
-
-        // Find or create employee
+        const weekInfo = this.getWeekNumber(entry.date)
         const employee = await this.findOrCreateEmployee(entry)
+
         if (!employee) {
           throw new Error('Failed to find or create employee')
         }
 
-        // Create time entry with project ID
-        await prisma.timeEntry.create({
-          data: {
+        const rowHash = this.generateRowHash(entry)
+
+        // Try to find existing entry
+        const existingEntry = await prisma.timeEntry.findFirst({
+          where: {
             employeeId: employee.id,
             projectId,
             date: entry.date,
-            regularHours: entry.regularHours,
-            overtimeHours: entry.overtimeHours,
             source: 'SHEET',
-            type: employee.employeeType === 'UNION' ? 'OVERTIME' : 'REGULAR',
-            weekNumber,
-            yearNumber,
-            paymentStatus: 'PENDING',
           },
         })
+
+        if (existingEntry) {
+          // Check if data changed
+          if (existingEntry.sourceHash !== rowHash) {
+            // Update existing entry
+            await prisma.timeEntry.update({
+              where: { id: existingEntry.id },
+              data: {
+                regularHours: entry.regularHours,
+                overtimeHours: entry.overtimeHours,
+                sourceHash: rowHash,
+                sourceRow: index + 1,
+              },
+            })
+          }
+        } else {
+          // Create new entry
+          await prisma.timeEntry.create({
+            data: {
+              employeeId: employee.id,
+              projectId,
+              date: entry.date,
+              regularHours: entry.regularHours,
+              overtimeHours: entry.overtimeHours,
+              source: 'SHEET',
+              type: employee.employeeType === 'UNION' ? 'OVERTIME' : 'REGULAR',
+              weekNumber: weekInfo.weekNumber,
+              yearNumber: weekInfo.yearNumber,
+              paymentStatus: 'PENDING',
+              sourceHash: rowHash,
+              sourceRow: index + 1,
+            },
+          })
+        }
 
         results.successful++
       } catch (error) {

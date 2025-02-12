@@ -2463,33 +2463,12 @@ app.get('/api/settings', async (req, res) => {
             fiscalYearEnd: new Date(new Date().getFullYear(), 11, 31), // Dec 31
             payrollBurden: 0.2,
           },
-          include: {
-            sheetConnections: {
-              include: {
-                project: {
-                  select: {
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
         }),
       )
     }
-    // Include sheet connections with project info
-    const connections = await prisma.sheetConnection.findMany({
-      include: {
-        project: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    })
+
     res.json({
       ...settings,
-      sheetConnections: connections,
     })
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch settings' })
@@ -2500,16 +2479,29 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', async (req, res) => {
   try {
     const data = {
-      ...req.body,
+      companyName: req.body.companyName,
+      businessHours: req.body.businessHours,
+      defaultCurrency: req.body.defaultCurrency,
       fiscalYearStart: new Date(req.body.fiscalYearStart),
       fiscalYearEnd: new Date(req.body.fiscalYearEnd),
+      defaultContractType: req.body.defaultContractType,
+      defaultProjectStatus: req.body.defaultProjectStatus,
+      payrollBurden: req.body.payrollBurden,
     }
+
+    // Normalize dates
+    data.fiscalYearStart.setUTCHours(12, 0, 0, 0)
+    data.fiscalYearEnd.setUTCHours(12, 0, 0, 0)
 
     const settings = await prisma.settings.upsert({
       where: { id: 1 },
       update: data,
-      create: data,
+      create: {
+        ...data,
+        id: 1,
+      },
     })
+
     res.json(settings)
   } catch (error) {
     console.error('Error updating settings:', error)
